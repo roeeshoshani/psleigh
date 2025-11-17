@@ -1,4 +1,5 @@
 BUILD_DIR ?= build
+DIST_DIR ?= $(BUILD_DIR)/dist
 
 SRC_NAMES := xml slghsymbol grammar pcodeparse slghparse slghscan ruleparse slghpatexpress slghpattern slaformat marshal opcodes translate space pcoderaw address float compression crc32 context semantics globalcontext pcodecompile type database variable cover varnode jumptable emulateutil emulate opbehavior memstate override fspec modelrules cpool architecture prefersplit funcdata_op op heritage rangeutil block funcdata merge funcdata_varnode unionresolve dynamic userop pcodeinject typeop varmap stringmanage flow funcdata_block action transform coreaction constseq subflow double condexe blockaction ruleaction multiprecision options printc ifacedecomp interface capability testfunction callgraph graph paramid printlanguage prettyprint comment loadimage cast sleighbase sleigh filemanage
 
@@ -7,8 +8,11 @@ OBJS += $(BUILD_DIR)/bindings.o
 
 SLGH_COMPILE_BIN := $(BUILD_DIR)/slgh_compile.elf
 
+DIST_PROCESSORS_DIR := $(DIST_DIR)/processors
+COPIED_PROCESSORS_DIR_MARKER := $(DIST_PROCESSORS_DIR)/.marker
+
 SLASPEC_FILES := $(shell find processors/ -name "*.slaspec")
-SLA_FILES := $(SLASPEC_FILES:%.slaspec=%.sla)
+SLA_FILES := $(SLASPEC_FILES:processors/%.slaspec=$(DIST_PROCESSORS_DIR)/%.sla)
 
 CXX := clang++
 
@@ -29,12 +33,19 @@ LDFLAGS += -fuse-ld=lld
 YACC := bison
 
 .phony: all
-all: $(BUILD_DIR)/libsla.so $(SLA_FILES)
+all: $(DIST_DIR)/libsla.so $(SLA_FILES)
 
-%.sla: %.slaspec $(SLGH_COMPILE_BIN)
+$(COPIED_PROCESSORS_DIR_MARKER):
+	rm -rf $(DIST_PROCESSORS_DIR)/*
+	mkdir -p $(DIST_PROCESSORS_DIR)/
+	cp -r processors/* $(DIST_PROCESSORS_DIR)/
+	touch $@
+
+$(DIST_PROCESSORS_DIR)/%.sla: processors/%.slaspec $(SLGH_COMPILE_BIN) $(COPIED_PROCESSORS_DIR_MARKER)
+	@mkdir -p $(@D)
 	$(SLGH_COMPILE_BIN) $< $@
 
-$(BUILD_DIR)/libsla.so: $(OBJS)
+$(DIST_DIR)/libsla.so: $(OBJS)
 	$(CXX) -shared $(CXXFLAGS) $^ $(LDFLAGS) -o $@
 
 $(SLGH_COMPILE_BIN): $(BUILD_DIR)/slgh_compile.o $(OBJS)
@@ -44,7 +55,7 @@ $(BUILD_DIR)/%.o: src/%.cc
 	@mkdir -p $(@D)
 	$(CXX) -c $(CXXFLAGS) $< -o $@
 
-$(BUILD_DIR)/bindings.o: ./bindings.cpp
+$(BUILD_DIR)/bindings.o: bindings.cpp
 	@mkdir -p $(@D)
 	$(CXX) -c $(CXXFLAGS) $< -o $@
 
@@ -68,4 +79,3 @@ src/ruleparse.hh: src/ruleparse.y src/ruleparse.cc
 .phony: clean
 clean:
 	rm -rf build
-	rm -f $(SLA_FILES)
