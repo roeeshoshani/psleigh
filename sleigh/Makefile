@@ -5,6 +5,11 @@ SRC_NAMES := xml slghsymbol grammar pcodeparse slghparse slghscan ruleparse slgh
 OBJS := $(SRC_NAMES:%=$(BUILD_DIR)/%.o)
 OBJS += $(BUILD_DIR)/bindings.o
 
+SLGH_COMPILE_BIN := $(BUILD_DIR)/slgh_compile.elf
+
+SLASPEC_FILES := $(shell find processors/ -name "*.slaspec")
+SLA_FILES := $(SLASPEC_FILES:%.slaspec=%.sla)
+
 CXX := clang++
 
 CXXFLAGS :=
@@ -24,15 +29,15 @@ LDFLAGS += -fuse-ld=lld
 YACC := bison
 
 .phony: all
-all: $(BUILD_DIR)/libsla.so $(BUILD_DIR)/libsla.a $(BUILD_DIR)/slgh_compile.elf
+all: $(BUILD_DIR)/libsla.so $(SLA_FILES)
+
+%.sla: %.slaspec $(SLGH_COMPILE_BIN)
+	$(SLGH_COMPILE_BIN) $< $@
 
 $(BUILD_DIR)/libsla.so: $(OBJS)
 	$(CXX) -shared $(CXXFLAGS) $^ $(LDFLAGS) -o $@
 
-$(BUILD_DIR)/libsla.a: $(OBJS)
-	$(AR) crs $@ $^
-
-$(BUILD_DIR)/slgh_compile.elf: $(BUILD_DIR)/slgh_compile.o $(OBJS)
+$(SLGH_COMPILE_BIN): $(BUILD_DIR)/slgh_compile.o $(OBJS)
 	$(CXX) $(CXXFLAGS) $^ $(LDFLAGS) -o $@
 
 $(BUILD_DIR)/%.o: src/%.cc
@@ -63,3 +68,4 @@ src/ruleparse.hh: src/ruleparse.y src/ruleparse.cc
 .phony: clean
 clean:
 	rm -rf build
+	rm -f $(SLA_FILES)
