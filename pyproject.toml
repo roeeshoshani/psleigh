@@ -17,11 +17,9 @@ exclude = [
 ]
 
 [[tool.hatch.build.hooks.build-scripts.scripts]]
-work_dir = "sleigh"
-out_dir = "src/pysleigh/bindings"
-commands = ["make -j$(nproc)"]
-artifacts = ["build/dist/**/*"]
-clean_out_dir = true
+work_dir = "."
+commands = ["make -C sleigh -j$(nproc) && cp -r sleigh/build/dist/* src/pysleigh/"]
+artifacts = []
 
 [build-system]
 requires = ["hatchling", "hatch-build-scripts"]

@@ -1,3 +1,4 @@
+#include <exception>
 #include <pybind11/detail/common.h>
 #include <pybind11/detail/using_smart_holder.h>
 #include <pybind11/pybind11.h>
@@ -16,7 +17,6 @@
 #include "./src/types.h"
 #include "./src/xml.hh"
 #include <cstdint>
-#include <memory>
 #include <stdexcept>
 
 namespace py = pybind11;
@@ -24,15 +24,30 @@ using namespace ghidra;
 
 class SymbolIsNotARegisterError : public std::exception {};
 
-class PyLoadImage : public LoadImage, public py::trampoline_self_life_support {
+class SimpleLoadImage : public LoadImage {
   public:
-    using LoadImage::LoadImage;
-
-    virtual void loadFill(uint1* ptr, int4 size, const Address& addr) {
-        PYBIND11_OVERRIDE_PURE(void, LoadImage, loadFill, ptr, size, addr);
-    }
-    virtual string getArchType(void) const { return "[memory]"; }
+    SimpleLoadImage() : LoadImage("[simple]") {}
+    virtual string getArchType(void) const { return "[simple]"; }
     virtual void adjustVma(long adjust) {}
+
+    virtual std::vector<uint1> loadSimple(const Address& addr, int4 amount) = 0;
+    virtual void loadFill(uint1* ptr, int4 size, const Address& addr) {
+        std::vector<uint1> buf = this->loadSimple(addr, size);
+        if (buf.size() != size) {
+            throw std::runtime_error("load simple returned an unexpected number of bytes");
+        }
+        memcpy(ptr, buf.data(), size);
+    }
+};
+
+class PySimpleLoadImage : public SimpleLoadImage, public py::trampoline_self_life_support {
+  public:
+    using SimpleLoadImage::SimpleLoadImage;
+
+    virtual std::vector<uint1> loadSimple(const Address& addr, int4 amount) {
+        PYBIND11_OVERRIDE_PURE(std::vector<uint1>, SimpleLoadImage, loadSimple, addr, amount);
+        
+    }
 };
 
 class MemoryBuffer : public std::streambuf {
@@ -431,7 +446,7 @@ PYBIND11_MODULE(pysleigh_bindings, m, py::mod_gil_not_used()) {
         .def("getWordSize", &AddrSpace::getWordSize)
         .def("getAddrSize", &AddrSpace::getAddrSize);
 
-    py::class_<LoadImage, PyLoadImage, py::smart_holder>(m, "LoadImage")
-        .def(py::init<const std::string&>())
-        .def("loadFill", &LoadImage::loadFill);
+    py::class_<SimpleLoadImage, PySimpleLoadImage, py::smart_holder>(m, "SimpleLoadImage")
+        .def(py::init<>())
+        .def("loadSimple", &SimpleLoadImage::loadSimple);
 }
