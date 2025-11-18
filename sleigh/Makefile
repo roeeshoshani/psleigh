@@ -2,10 +2,9 @@ BUILD_DIR ?= build
 DIST_DIR ?= $(BUILD_DIR)/dist
 
 
-LIB_SRC_NAMES := xml slghsymbol grammar pcodeparse ruleparse slghpatexpress slghpattern slaformat marshal opcodes translate space pcoderaw address float compression crc32 context semantics globalcontext pcodecompile type database variable cover varnode jumptable emulateutil emulate opbehavior memstate override fspec modelrules cpool architecture prefersplit funcdata_op op heritage rangeutil block funcdata merge funcdata_varnode unionresolve dynamic userop pcodeinject typeop varmap stringmanage flow funcdata_block action transform coreaction constseq subflow double condexe blockaction ruleaction multiprecision options printc ifacedecomp interface capability testfunction callgraph graph paramid printlanguage prettyprint comment loadimage cast sleighbase sleigh filemanage
+LIB_SRC_NAMES := xml slghsymbol grammar pcodeparse ruleparse slghpatexpress slghpattern slaformat marshal opcodes translate space pcoderaw address float compression crc32 context semantics globalcontext pcodecompile type database variable cover varnode jumptable emulateutil emulate opbehavior memstate override fspec modelrules cpool architecture prefersplit funcdata_op op heritage rangeutil block funcdata merge funcdata_varnode unionresolve dynamic userop pcodeinject typeop varmap stringmanage flow funcdata_block action transform coreaction constseq subflow double condexe blockaction ruleaction multiprecision options printc ifacedecomp interface capability testfunction callgraph graph paramid printlanguage prettyprint comment loadimage cast sleighbase sleigh filemanage expression
 
 LIB_OBJS := $(LIB_SRC_NAMES:%=$(BUILD_DIR)/%.o)
-LIB_OBJS += $(BUILD_DIR)/bindings.o
 
 SLGH_COMPILE_BIN_EXTRA_SRCS := slghparse slghscan slgh_compile
 SLGH_COMPILE_BIN_EXTRA_OBJS := $(SLGH_COMPILE_BIN_EXTRA_SRCS:%=$(BUILD_DIR)/%.o)
@@ -54,7 +53,7 @@ $(DIST_PROCESSORS_DIR)/%.sla: processors/%.slaspec $(SLGH_COMPILE_BIN) $(COPIED_
 	@mkdir -p $(@D)
 	$(SLGH_COMPILE_BIN) $< $@
 
-$(DIST_DIR)/libsla.so: $(LIB_OBJS)
+$(DIST_DIR)/libsla.so: $(LIB_OBJS) $(BUILD_DIR)/bindings.o
 	@mkdir -p $(@D)
 	$(CXX) -shared $(CXXFLAGS) $^ $(LDFLAGS) -o $@
 
