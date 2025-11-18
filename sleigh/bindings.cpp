@@ -388,59 +388,31 @@ class BindingsSleigh : public SleighBase {
         return &vn;
     }
 
+    size_t regNameToIndex(AddrSpace* space, uint64_t off, int32_t size) {
+        std::string name = this->getRegisterName(space, off, size);
+        std::vector<std::string>& names = this->m_all_reg_names;
+
+        auto it = std::find(names.begin(), names.end(), name);
+        if (it != names.end()) {
+            // return the index of the name in the list
+            return std::distance(names.begin(), it);
+        } else {
+            return SIZE_MAX;
+        }
+    }
+
+    size_t allRegNamesAmount() {
+        return this->m_all_reg_names.size();
+    }
+
+    const std::string& allRegNamesGetByIndex(size_t index) {
+        return this->m_all_reg_names[index];
+    }
 };
 
 void sleigh_bindings_init_globals() {
     AttributeId::initialize();
     ElementId::initialize();
-}
-
-int sleigh_bindings_ctx_reg_by_name(void* ctx, const char* reg_name, size_t reg_name_len, void** out_vn_ptr) {
-    BindingsSleigh* s = (BindingsSleigh*)ctx;
-
-    // `reg_name` is a rust string and not a cstring, so we need to specify its lenghth explicitly.
-    std::string reg_name_string(reg_name, reg_name_len);
-
-    VarnodeSymbol* sym = (VarnodeSymbol*)s->findSymbol(reg_name_string);
-
-    if (sym == (VarnodeSymbol*)0)
-        return (int)BindingsError::NoSuchRegister;
-
-    if (sym->getType() != SleighSymbol::varnode_symbol)
-        return (int)BindingsError::SymbolIsNotARegister;
-
-    const VarnodeData& vn = sym->getFixedVarnode();
-    const VarnodeData* vn_ptr = (const VarnodeData*)&vn;
-    *out_vn_ptr = (void*)vn_ptr;
-
-    return (int)BindingsError::Success;
-}
-
-size_t sleigh_bindings_ctx_reg_to_name_index(void* ctx, void* space, uint64_t off, int32_t size) {
-    BindingsSleigh* s = (BindingsSleigh*)ctx;
-
-    std::string name = s->getRegisterName((AddrSpace*)space, off, size);
-    std::vector<std::string>& names = s->m_all_reg_names;
-
-    auto it = std::find(names.begin(), names.end(), name);
-    if (it != names.end()) {
-        // return the index of the name in the list
-        return std::distance(names.begin(), it);
-    } else {
-        return SIZE_MAX;
-    }
-}
-
-size_t sleigh_bindings_ctx_all_reg_names_amount(void* ctx) {
-    BindingsSleigh* s = (BindingsSleigh*)ctx;
-    return s->m_all_reg_names.size();
-}
-
-const char* sleigh_bindings_ctx_all_reg_names_get_by_index(void* ctx, size_t index, size_t* out_name_len) {
-    BindingsSleigh* s = (BindingsSleigh*)ctx;
-    const string& name = s->m_all_reg_names[index];
-    *out_name_len = name.size();
-    return name.data();
 }
 
 uint64_t sleigh_bindings_varnode_offset(void* varnode) {
@@ -500,7 +472,10 @@ PYBIND11_MODULE(pysleigh_bindings, m, py::mod_gil_not_used()) {
         .def("insnsAmount", &BindingsSleigh::insnsAmount)
         .def("insn", &BindingsSleigh::insn, py::return_value_policy::reference_internal)
         .def("getSpaceByShortcut", &BindingsSleigh::getSpaceByShortcut, py::return_value_policy::reference_internal)
-        .def("regByName", &BindingsSleigh::regByName, py::return_value_policy::reference_internal);
+        .def("regByName", &BindingsSleigh::regByName, py::return_value_policy::reference_internal)
+        .def("regNameToIndex", &BindingsSleigh::regNameToIndex)
+        .def("allRegNamesAmount", &BindingsSleigh::allRegNamesAmount)
+        .def("allRegNamesGetByIndex", &BindingsSleigh::allRegNamesGetByIndex, py::return_value_policy::reference_internal);
 
     py::class_<BindingsInsn, py::smart_holder>(m, "BindingsInsn")
         .def("outVar", &BindingsInsn::outVar, py::return_value_policy::reference_internal)
