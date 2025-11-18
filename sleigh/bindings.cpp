@@ -1,3 +1,7 @@
+#include <pybind11/detail/common.h>
+#include <pybind11/detail/using_smart_holder.h>
+#include <pybind11/pybind11.h>
+
 #include "./src/error.hh"
 #include "./src/globalcontext.hh"
 #include "./src/loadimage.hh"
@@ -13,14 +17,13 @@
 #include "./src/xml.hh"
 #include <cstdint>
 #include <memory>
-#include <pybind11/pybind11.h>
 #include <stdexcept>
 
+namespace py = pybind11;
 using namespace ghidra;
 
 enum class BindingsError {
     Success = 0,
-
     AddrWraparound = 1,
     AddrOutOfBufferBounds = 2,
     OutOfMem = 3,
@@ -38,21 +41,12 @@ class BindingsException : public std::exception {
     BindingsError m_error;
 };
 
-typedef uint8_t (*BindingsLoadImageCallback)(void* ctx, uint1* ptr, int4 size, const AddrSpace* addr_space, uintb addr_offset);
-
-class BindingsLoadImage : public LoadImage {
+class PyLoadImage : public LoadImage, public py::trampoline_self_life_support {
   public:
-    BindingsLoadImageCallback m_read_callback;
-    void* m_read_callback_ctx;
-
-    BindingsLoadImage(BindingsLoadImageCallback read_callback, void* read_callback_ctx)
-        : LoadImage("[memory]"), m_read_callback(read_callback), m_read_callback_ctx(read_callback_ctx) {}
+    using LoadImage::LoadImage;
 
     virtual void loadFill(uint1* ptr, int4 size, const Address& addr) {
-        uint8_t res = m_read_callback(m_read_callback_ctx, ptr, size, addr.getSpace(), addr.getOffset());
-        if (!res) {
-            throw BindingsException(BindingsError::CallbackError);
-        }
+        PYBIND11_OVERRIDE_PURE(void, LoadImage, loadFill, ptr, size, addr);
     }
     virtual string getArchType(void) const { return "[memory]"; }
     virtual void adjustVma(long adjust) {}
@@ -74,11 +68,57 @@ struct BindingsInsn {
     std::vector<VarnodeData> m_in_vars;
 
     size_t m_machine_insn_len;
+
+    VarnodeData* outVar() {
+        if (this->m_has_out_var) {
+            return nullptr;
+        }
+        return &this->m_out_var;
+    }
+
+    size_t inVarsAmount() {
+        return this->m_in_vars.size();
+    }
+
+    VarnodeData* inVar(size_t index) {
+        if (index >= this->m_in_vars.size()) {
+            throw py::index_error("input varnode index out of range");
+        }
+        return &this->m_in_vars[index];
+    }
+};
+
+class BindingsPcodeEmitter : public PcodeEmit {
+  public:
+    std::vector<BindingsInsn> m_insns;
+
+    BindingsPcodeEmitter() : m_insns() {}
+
+    std::vector<BindingsInsn> takeInsns() { return m_insns; }
+
+    void reset() { m_insns.clear(); }
+
+    virtual void dump(const Address& addr, OpCode opc, VarnodeData* outvar, VarnodeData* vars, int4 isize) {
+        BindingsInsn insn = {};
+
+        insn.m_opcode = opc;
+
+        if (outvar != nullptr) {
+            insn.m_has_out_var = true;
+            insn.m_out_var = *outvar;
+        }
+
+        for (int4 i = 0; i < isize; i++) {
+            insn.m_in_vars.push_back(vars[i]);
+        }
+
+        m_insns.push_back(insn);
+    }
 };
 
 class BindingsSleigh : public SleighBase {
   public:
-    BindingsLoadImage m_buf_load_image;
+    std::unique_ptr<LoadImage> m_buf_load_image;
     ContextInternal m_ctx;
     mutable PcodeCacher m_pcode_cache;
     std::unique_ptr<ContextCache> m_ctx_cache;
@@ -89,15 +129,13 @@ class BindingsSleigh : public SleighBase {
 
     std::vector<string> m_all_reg_names;
 
-    BindingsSleigh(
-        const uint1* sla_content, size_t sla_content_len, BindingsLoadImageCallback read_callback, void* read_callback_ctx
-    )
-        : SleighBase(), m_buf_load_image(read_callback, read_callback_ctx), m_ctx(), m_pcode_cache(), m_ctx_cache(nullptr),
+    BindingsSleigh(std::vector<uint1> sla_content, std::unique_ptr<LoadImage> buf_load_image)
+        : SleighBase(), m_buf_load_image(std::move(buf_load_image)), m_ctx(), m_pcode_cache(), m_ctx_cache(nullptr),
           m_dis_cache(nullptr), m_insns(), m_all_reg_names() {
         m_ctx_cache = std::make_unique<ContextCache>(&m_ctx);
 
         // convert the sla content buffer to an istream
-        MemoryBuffer buf(sla_content, sla_content_len);
+        MemoryBuffer buf(sla_content.data(), sla_content.size());
         std::istream stream(&buf);
 
         // decode the sla specification
@@ -138,7 +176,7 @@ class BindingsSleigh : public SleighBase {
     void resolve(ParserContext& pos)
 
     {
-        m_buf_load_image.loadFill(pos.getBuffer(), 16, pos.getAddr());
+        m_buf_load_image->loadFill(pos.getBuffer(), 16, pos.getAddr());
         ParserWalkerChange walker(&pos);
         pos.deallocateState(walker); // Clear the previous resolve and initialize the walker
         Constructor *ct, *subct;
@@ -311,117 +349,50 @@ class BindingsSleigh : public SleighBase {
     virtual void setContextDefault(const string& name, uintm val) { m_ctx.setVariableDefault(name, val); }
 
     virtual void allowContextSet(bool val) const { m_ctx_cache.get()->allowSet(val); }
-};
 
-class BindingsPcodeEmitter : public PcodeEmit {
-  public:
-    std::vector<BindingsInsn> m_insns;
-
-    BindingsPcodeEmitter() : m_insns() {}
-
-    std::vector<BindingsInsn> takeInsns() { return m_insns; }
-
-    void reset() { m_insns.clear(); }
-
-    virtual void dump(const Address& addr, OpCode opc, VarnodeData* outvar, VarnodeData* vars, int4 isize) {
-        BindingsInsn insn = {};
-
-        insn.m_opcode = opc;
-
-        if (outvar != nullptr) {
-            insn.m_has_out_var = true;
-            insn.m_out_var = *outvar;
-        }
-
-        for (int4 i = 0; i < isize; i++) {
-            insn.m_in_vars.push_back(vars[i]);
-        }
-
-        m_insns.push_back(insn);
+    void liftOne(uint64_t addr) {
+        BindingsPcodeEmitter emitter;
+        uint32_t machine_insn_len = this->myOneInstruction(emitter, addr);
+        this->m_insns = emitter.takeInsns();
+        this->machine_insn_len = machine_insn_len;
     }
+
+    void setVarDefault(const std::string& name, uint32_t value) { this->m_ctx.setVariableDefault(name, value); }
+
+    size_t machineInsnLen() {
+        return this->machine_insn_len;
+    }
+
+    size_t insnsAmount() {
+        return this->m_insns.size();
+    }
+
+    BindingsInsn* insn(size_t insn_index) {
+        if (insn_index >= this->m_insns.size()) {
+            throw py::index_error("insn index out of range");
+        }
+        return &this->m_insns[insn_index];
+    }
+
+    const VarnodeData* regByName(const std::string& reg_name) {
+        VarnodeSymbol* sym = (VarnodeSymbol*)this->findSymbol(reg_name);
+
+        if (sym == (VarnodeSymbol*)0)
+            return NULL;
+
+        if (sym->getType() != SleighSymbol::varnode_symbol)
+            throw BindingsException(BindingsError::SymbolIsNotARegister);
+
+        const VarnodeData& vn = sym->getFixedVarnode();
+
+        return &vn;
+    }
+
 };
 
 void sleigh_bindings_init_globals() {
     AttributeId::initialize();
     ElementId::initialize();
-}
-
-int sleigh_bindings_ctx_init(
-    const uint8_t* sla_content, size_t sla_content_len, BindingsLoadImageCallback read_callback, void* read_callback_ctx,
-    void** ctx
-) {
-    BindingsSleigh* s = new BindingsSleigh(sla_content, sla_content_len, read_callback, read_callback_ctx);
-    if (s == nullptr) {
-        return (int)BindingsError::OutOfMem;
-    }
-    *ctx = s;
-    return (int)BindingsError::Success;
-}
-
-int sleigh_bindings_ctx_set_var_default(void* ctx, const char* name, size_t name_len, uint32_t value) {
-    BindingsSleigh* s = (BindingsSleigh*)ctx;
-
-    // `name` is a rust string and not a cstring, so we need to specify its lenghth explicitly.
-    std::string name_string(name, name_len);
-
-    s->m_ctx.setVariableDefault(name_string, value);
-
-    return (int)BindingsError::Success;
-}
-
-void* sleigh_bindings_ctx_default_code_space(void* ctx) {
-    BindingsSleigh* s = (BindingsSleigh*)ctx;
-    return s->getDefaultCodeSpace();
-}
-
-int sleigh_bindings_ctx_lift_one(void* ctx, uint64_t addr) {
-    BindingsSleigh* s = (BindingsSleigh*)ctx;
-    BindingsPcodeEmitter emitter;
-    uint32_t machine_insn_len = s->myOneInstruction(emitter, addr);
-    s->m_insns = emitter.takeInsns();
-    s->machine_insn_len = machine_insn_len;
-    return (int)BindingsError::Success;
-}
-
-size_t sleigh_bindings_ctx_machine_insn_len(void* ctx) {
-    BindingsSleigh* s = (BindingsSleigh*)ctx;
-    return s->machine_insn_len;
-}
-
-size_t sleigh_bindings_ctx_insns_amount(void* ctx) {
-    BindingsSleigh* s = (BindingsSleigh*)ctx;
-    return s->m_insns.size();
-}
-
-int sleigh_bindings_ctx_insn_opcode(void* ctx, size_t insn_index) {
-    BindingsSleigh* s = (BindingsSleigh*)ctx;
-    return s->m_insns[insn_index].m_opcode;
-}
-
-void* sleigh_bindings_ctx_insn_out_var(void* ctx, size_t insn_index) {
-    BindingsSleigh* s = (BindingsSleigh*)ctx;
-    if (!s->m_insns[insn_index].m_has_out_var) {
-        return nullptr;
-    }
-    return &s->m_insns[insn_index].m_out_var;
-}
-
-size_t sleigh_bindings_ctx_insn_in_vars_amount(void* ctx, size_t insn_index) {
-    BindingsSleigh* s = (BindingsSleigh*)ctx;
-    return s->m_insns[insn_index].m_in_vars.size();
-}
-
-void* sleigh_bindings_ctx_insn_in_var(void* ctx, size_t insn_index, size_t in_var_index) {
-    BindingsSleigh* s = (BindingsSleigh*)ctx;
-    if (in_var_index >= s->m_insns[insn_index].m_in_vars.size()) {
-        return nullptr;
-    }
-    return &s->m_insns[insn_index].m_in_vars[in_var_index];
-}
-
-void* sleigh_bindings_ctx_space_by_shortcut(void* ctx, char shortcut) {
-    BindingsSleigh* s = (BindingsSleigh*)ctx;
-    return s->getSpaceByShortcut(shortcut);
 }
 
 int sleigh_bindings_ctx_reg_by_name(void* ctx, const char* reg_name, size_t reg_name_len, void** out_vn_ptr) {
@@ -518,32 +489,25 @@ void sleigh_bindings_ctx_destroy(void* ctx) {
     delete s;
 }
 
-PYBIND11_MODULE(pysleigh_bindings, m) {
-#define DEF_FN(FN) m.def(#FN, FN)
+PYBIND11_MODULE(pysleigh_bindings, m, py::mod_gil_not_used()) {
+    m.def("sleigh_bindings_init_globals", &sleigh_bindings_init_globals);
+    py::class_<BindingsSleigh, py::smart_holder>(m, "BindingsSleigh")
+        .def(py::init<std::vector<uint1>, std::unique_ptr<LoadImage>>())
+        .def("liftOne", &BindingsSleigh::liftOne)
+        .def("setVarDefault", &BindingsSleigh::setVarDefault)
+        .def("getDefaultCodeSpace", &BindingsSleigh::getDefaultCodeSpace, py::return_value_policy::reference_internal)
+        .def("machineInsnLen", &BindingsSleigh::machineInsnLen)
+        .def("insnsAmount", &BindingsSleigh::insnsAmount)
+        .def("insn", &BindingsSleigh::insn, py::return_value_policy::reference_internal)
+        .def("getSpaceByShortcut", &BindingsSleigh::getSpaceByShortcut, py::return_value_policy::reference_internal)
+        .def("regByName", &BindingsSleigh::regByName, py::return_value_policy::reference_internal);
 
-    DEF_FN(sleigh_bindings_init_globals);
-    DEF_FN(sleigh_bindings_ctx_init);
-    DEF_FN(sleigh_bindings_ctx_set_var_default);
-    DEF_FN(sleigh_bindings_ctx_default_code_space);
-    DEF_FN(sleigh_bindings_ctx_lift_one);
-    DEF_FN(sleigh_bindings_ctx_machine_insn_len);
-    DEF_FN(sleigh_bindings_ctx_insns_amount);
-    DEF_FN(sleigh_bindings_ctx_insn_opcode);
-    DEF_FN(sleigh_bindings_ctx_insn_out_var);
-    DEF_FN(sleigh_bindings_ctx_insn_in_vars_amount);
-    DEF_FN(sleigh_bindings_ctx_insn_in_var);
-    DEF_FN(sleigh_bindings_ctx_space_by_shortcut);
-    DEF_FN(sleigh_bindings_ctx_reg_by_name);
-    DEF_FN(sleigh_bindings_ctx_reg_to_name_index);
-    DEF_FN(sleigh_bindings_ctx_all_reg_names_amount);
-    DEF_FN(sleigh_bindings_ctx_all_reg_names_get_by_index);
-    DEF_FN(sleigh_bindings_varnode_offset);
-    DEF_FN(sleigh_bindings_varnode_size);
-    DEF_FN(sleigh_bindings_varnode_space);
-    DEF_FN(sleigh_bindings_space_name);
-    DEF_FN(sleigh_bindings_space_shortcut);
-    DEF_FN(sleigh_bindings_space_type);
-    DEF_FN(sleigh_bindings_space_word_size);
-    DEF_FN(sleigh_bindings_space_addr_size);
-    DEF_FN(sleigh_bindings_ctx_destroy);
+    py::class_<BindingsInsn, py::smart_holder>(m, "BindingsInsn")
+        .def("outVar", &BindingsInsn::outVar, py::return_value_policy::reference_internal)
+        .def("inVarsAmount", &BindingsInsn::inVarsAmount)
+        .def("inVar", &BindingsInsn::inVar, py::return_value_policy::reference_internal);
+
+    py::class_<VarnodeData, py::smart_holder>(m, "VarnodeData");
+
+    py::class_<AddrSpace, py::smart_holder>(m, "AddrSpace");
 }
