@@ -410,60 +410,30 @@ class BindingsSleigh : public SleighBase {
     }
 };
 
-void sleigh_bindings_init_globals() {
-    AttributeId::initialize();
-    ElementId::initialize();
+void sleighBindingsInitGlobals() {
+    static std::atomic<bool> initialized = false;
+    if (!initialized.exchange(true)) {
+        AttributeId::initialize();
+        ElementId::initialize();
+    }
 }
 
-uint64_t sleigh_bindings_varnode_offset(void* varnode) {
-    const VarnodeData* v = (VarnodeData*)varnode;
+uint64_t varnodeGetOffset(const VarnodeData* v) {
     return v->offset;
 }
 
-uint32_t sleigh_bindings_varnode_size(void* varnode) {
-    const VarnodeData* v = (VarnodeData*)varnode;
+uint32_t varnodeGetSize(const VarnodeData* v) {
     return v->size;
 }
 
-void* sleigh_bindings_varnode_space(void* varnode) {
-    const VarnodeData* v = (VarnodeData*)varnode;
+AddrSpace* varnodeGetSpace(const VarnodeData* v) {
     return v->space;
 }
 
-const char* sleigh_bindings_space_name(void* space, size_t* out_name_len) {
-    AddrSpace* s = (AddrSpace*)space;
-    *out_name_len = s->getName().size();
-    return s->getName().data();
-}
-
-char sleigh_bindings_space_shortcut(void* space) {
-    AddrSpace* s = (AddrSpace*)space;
-    return s->getShortcut();
-}
-
-int sleigh_bindings_space_type(void* space) {
-    AddrSpace* s = (AddrSpace*)space;
-    return s->getType();
-}
-
-uint32_t sleigh_bindings_space_word_size(void* space) {
-    AddrSpace* s = (AddrSpace*)space;
-    return s->getWordSize();
-}
-
-uint32_t sleigh_bindings_space_addr_size(void* space) {
-    AddrSpace* s = (AddrSpace*)space;
-    return s->getAddrSize();
-}
-
-void sleigh_bindings_ctx_destroy(void* ctx) {
-    BindingsSleigh* s = (BindingsSleigh*)ctx;
-    delete s;
-}
-
 PYBIND11_MODULE(pysleigh_bindings, m, py::mod_gil_not_used()) {
-    m.def("sleigh_bindings_init_globals", &sleigh_bindings_init_globals);
-    py::class_<BindingsSleigh, py::smart_holder>(m, "BindingsSleigh")
+    sleighBindingsInitGlobals();
+
+    py::class_<BindingsSleigh, py::smart_holder>(m, "Sleigh")
         .def(py::init<std::vector<uint1>, std::unique_ptr<LoadImage>>())
         .def("liftOne", &BindingsSleigh::liftOne)
         .def("setVarDefault", &BindingsSleigh::setVarDefault)
@@ -477,12 +447,20 @@ PYBIND11_MODULE(pysleigh_bindings, m, py::mod_gil_not_used()) {
         .def("allRegNamesAmount", &BindingsSleigh::allRegNamesAmount)
         .def("allRegNamesGetByIndex", &BindingsSleigh::allRegNamesGetByIndex, py::return_value_policy::reference_internal);
 
-    py::class_<BindingsInsn, py::smart_holder>(m, "BindingsInsn")
+    py::class_<BindingsInsn, py::smart_holder>(m, "Insn")
         .def("outVar", &BindingsInsn::outVar, py::return_value_policy::reference_internal)
         .def("inVarsAmount", &BindingsInsn::inVarsAmount)
         .def("inVar", &BindingsInsn::inVar, py::return_value_policy::reference_internal);
 
-    py::class_<VarnodeData, py::smart_holder>(m, "VarnodeData");
+    py::class_<VarnodeData, py::smart_holder>(m, "VarnodeData")
+        .def("getOffset", &varnodeGetOffset)
+        .def("getSize", &varnodeGetSize)
+        .def("getSpace", &varnodeGetSpace, py::return_value_policy::reference_internal);
 
-    py::class_<AddrSpace, py::smart_holder>(m, "AddrSpace");
+    py::class_<AddrSpace, py::smart_holder>(m, "AddrSpace")
+        .def("getName", &AddrSpace::getName, py::return_value_policy::reference_internal)
+        .def("getShortcut", &AddrSpace::getShortcut)
+        .def("getType", &AddrSpace::getType)
+        .def("getWordSize", &AddrSpace::getWordSize)
+        .def("getAddrSize", &AddrSpace::getAddrSize);
 }
