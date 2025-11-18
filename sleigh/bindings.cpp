@@ -430,4 +430,8 @@ PYBIND11_MODULE(pysleigh_bindings, m, py::mod_gil_not_used()) {
         .def("getType", &AddrSpace::getType)
         .def("getWordSize", &AddrSpace::getWordSize)
         .def("getAddrSize", &AddrSpace::getAddrSize);
+
+    py::class_<LoadImage, PyLoadImage, py::smart_holder>(m, "LoadImage")
+        .def(py::init<const std::string&>())
+        .def("loadFill", &LoadImage::loadFill);
 }
