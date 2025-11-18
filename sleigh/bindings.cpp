@@ -22,24 +22,7 @@
 namespace py = pybind11;
 using namespace ghidra;
 
-enum class BindingsError {
-    Success = 0,
-    AddrWraparound = 1,
-    AddrOutOfBufferBounds = 2,
-    OutOfMem = 3,
-    ParseErr = 4,
-    Unknown = 5,
-    CallbackError = 6,
-    NoSuchRegister = 7,
-    SymbolIsNotARegister = 8,
-    LowLevelErr = 9,
-};
-
-class BindingsException : public std::exception {
-  public:
-    BindingsException(BindingsError error) : m_error(error) {}
-    BindingsError m_error;
-};
+class SymbolIsNotARegisterError : public std::exception {};
 
 class PyLoadImage : public LoadImage, public py::trampoline_self_life_support {
   public:
@@ -76,9 +59,7 @@ struct BindingsInsn {
         return &this->m_out_var;
     }
 
-    size_t inVarsAmount() {
-        return this->m_in_vars.size();
-    }
+    size_t inVarsAmount() { return this->m_in_vars.size(); }
 
     VarnodeData* inVar(size_t index) {
         if (index >= this->m_in_vars.size()) {
@@ -359,13 +340,9 @@ class BindingsSleigh : public SleighBase {
 
     void setVarDefault(const std::string& name, uint32_t value) { this->m_ctx.setVariableDefault(name, value); }
 
-    size_t machineInsnLen() {
-        return this->machine_insn_len;
-    }
+    size_t machineInsnLen() { return this->machine_insn_len; }
 
-    size_t insnsAmount() {
-        return this->m_insns.size();
-    }
+    size_t insnsAmount() { return this->m_insns.size(); }
 
     BindingsInsn* insn(size_t insn_index) {
         if (insn_index >= this->m_insns.size()) {
@@ -381,7 +358,7 @@ class BindingsSleigh : public SleighBase {
             return NULL;
 
         if (sym->getType() != SleighSymbol::varnode_symbol)
-            throw BindingsException(BindingsError::SymbolIsNotARegister);
+            throw SymbolIsNotARegisterError();
 
         const VarnodeData& vn = sym->getFixedVarnode();
 
@@ -401,13 +378,9 @@ class BindingsSleigh : public SleighBase {
         }
     }
 
-    size_t allRegNamesAmount() {
-        return this->m_all_reg_names.size();
-    }
+    size_t allRegNamesAmount() { return this->m_all_reg_names.size(); }
 
-    const std::string& allRegNamesGetByIndex(size_t index) {
-        return this->m_all_reg_names[index];
-    }
+    const std::string& allRegNamesGetByIndex(size_t index) { return this->m_all_reg_names[index]; }
 };
 
 void sleighBindingsInitGlobals() {
@@ -418,17 +391,11 @@ void sleighBindingsInitGlobals() {
     }
 }
 
-uint64_t varnodeGetOffset(const VarnodeData* v) {
-    return v->offset;
-}
+uint64_t varnodeGetOffset(const VarnodeData* v) { return v->offset; }
 
-uint32_t varnodeGetSize(const VarnodeData* v) {
-    return v->size;
-}
+uint32_t varnodeGetSize(const VarnodeData* v) { return v->size; }
 
-AddrSpace* varnodeGetSpace(const VarnodeData* v) {
-    return v->space;
-}
+AddrSpace* varnodeGetSpace(const VarnodeData* v) { return v->space; }
 
 PYBIND11_MODULE(pysleigh_bindings, m, py::mod_gil_not_used()) {
     sleighBindingsInitGlobals();
