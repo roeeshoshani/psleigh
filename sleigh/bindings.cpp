@@ -10,7 +10,6 @@
 #include "./src/marshal.hh"
 #include "./src/opcodes.hh"
 #include "./src/pcoderaw.hh"
-#include "./src/slaformat.hh"
 #include "./src/sleigh.hh"
 #include "./src/slghsymbol.hh"
 #include "./src/space.hh"
@@ -48,7 +47,6 @@ class PySimpleLoadImage : public SimpleLoadImage, public py::trampoline_self_lif
 
     virtual py::buffer loadSimple(const Address& addr, int4 amount) {
         PYBIND11_OVERRIDE_PURE(py::buffer, SimpleLoadImage, loadSimple, addr, amount);
-        
     }
 };
 
@@ -114,244 +112,40 @@ class BindingsPcodeEmitter : public PcodeEmit {
     }
 };
 
-class BindingsSleigh : public SleighBase {
+class BindingsSleigh {
   public:
     std::unique_ptr<SimpleLoadImage> m_buf_load_image;
+    std::unique_ptr<Sleigh> m_sleigh;
     ContextInternal m_ctx;
-    mutable PcodeCacher m_pcode_cache;
-    std::unique_ptr<ContextCache> m_ctx_cache;
-    std::unique_ptr<DisassemblyCache> m_dis_cache;
 
     std::vector<BindingsInsn> m_insns;
     size_t machine_insn_len;
 
     std::vector<string> m_all_reg_names;
 
-    BindingsSleigh(py::buffer sla_content, std::unique_ptr<SimpleLoadImage> buf_load_image)
-        : SleighBase(), m_buf_load_image(std::move(buf_load_image)), m_ctx(), m_pcode_cache(), m_ctx_cache(nullptr),
-          m_dis_cache(nullptr), m_insns(), m_all_reg_names() {
-        m_ctx_cache = std::make_unique<ContextCache>(&m_ctx);
-        py::buffer_info sla_content_info = sla_content.request();
+    BindingsSleigh(const std::string& sla_file_path, std::unique_ptr<SimpleLoadImage> buf_load_image)
+        : m_buf_load_image(std::move(buf_load_image)), m_sleigh(nullptr), m_ctx(), m_insns(), m_all_reg_names() {
 
-        // convert the sla content buffer to an istream
-        MemoryBuffer buf((const uint1*)sla_content_info.ptr, sla_content_info.size);
-        std::istream stream(&buf);
+        m_sleigh = std::make_unique<Sleigh>(m_buf_load_image.get(), &m_ctx);
 
         // decode the sla specification
-        sla::FormatDecode decoder(this);
-        decoder.ingestStream(stream);
-        decode(decoder);
-
-        uint4 parser_cachesize = 2;
-        uint4 parser_windowsize = 32;
-        if ((maxdelayslotbytes > 1) || (unique_allocatemask != 0)) {
-            parser_cachesize = 8;
-            parser_windowsize = 256;
-        }
-        m_dis_cache = std::make_unique<DisassemblyCache>(
-            this, m_ctx_cache.get(), getConstantSpace(), parser_cachesize, parser_windowsize
-        );
+        DocumentStorage docstorage;
+        Element* sleighroot = docstorage.openDocument(sla_file_path)->getRoot();
+        docstorage.registerTag(sleighroot);
+        m_sleigh->initialize(docstorage);
 
         // collect all register names
         map<VarnodeData, string> tmp_all_regs;
-        getAllRegisters(tmp_all_regs);
+        m_sleigh->getAllRegisters(tmp_all_regs);
         for (const auto& entry : tmp_all_regs) {
             m_all_reg_names.push_back(entry.second);
         }
     }
 
-    // implement all virtual functions to make compiler happy
-    virtual void initialize(DocumentStorage& store) { throw std::runtime_error("not implemented by bindings sleigh instance"); }
-    virtual int4 oneInstruction(PcodeEmit& emit, const Address& baseaddr) const {
-        throw std::runtime_error("not implemented by bindings sleigh instance");
-    }
-    virtual int4 instructionLength(const Address& baseaddr) const {
-        throw std::runtime_error("not implemented by bindings sleigh instance");
-    }
-    virtual int4 printAssembly(AssemblyEmit& emit, const Address& baseaddr) const {
-        throw std::runtime_error("not implemented by bindings sleigh instance");
-    }
-
-    void resolve(ParserContext& pos)
-
-    {
-        m_buf_load_image->loadFill(pos.getBuffer(), 16, pos.getAddr());
-        ParserWalkerChange walker(&pos);
-        pos.deallocateState(walker); // Clear the previous resolve and initialize the walker
-        Constructor *ct, *subct;
-        uint4 off;
-        int4 oper, numoper;
-
-        pos.setDelaySlot(0);
-        walker.setOffset(0);        // Initial offset
-        pos.clearCommits();         // Clear any old context commits
-        pos.loadContext();          // Get context for current address
-        ct = root->resolve(walker); // Base constructor
-        walker.setConstructor(ct);
-        ct->applyContext(walker);
-        while (walker.isState()) {
-            ct = walker.getConstructor();
-            oper = walker.getOperand();
-            numoper = ct->getNumOperands();
-            while (oper < numoper) {
-                OperandSymbol* sym = ct->getOperand(oper);
-                off = walker.getOffset(sym->getOffsetBase()) + sym->getRelativeOffset();
-                pos.allocateOperand(oper, walker); // Descend into new operand and reserve space
-                walker.setOffset(off);
-                TripleSymbol* tsym = sym->getDefiningSymbol();
-                if (tsym != (TripleSymbol*)0) {
-                    subct = tsym->resolve(walker);
-                    if (subct != (Constructor*)0) {
-                        walker.setConstructor(subct);
-                        subct->applyContext(walker);
-                        break;
-                    }
-                }
-                walker.setCurrentLength(sym->getMinimumLength());
-                walker.popOperand();
-                oper += 1;
-            }
-            if (oper >= numoper) { // Finished processing constructor
-                walker.calcCurrentLength(ct->getMinimumLength(), numoper);
-                walker.popOperand();
-                // Check for use of delayslot
-                ConstructTpl* templ = ct->getTempl();
-                if ((templ != (ConstructTpl*)0) && (templ->delaySlot() > 0))
-                    pos.setDelaySlot(templ->delaySlot());
-            }
-        }
-        pos.setNaddr(pos.getAddr() + pos.getLength()); // Update Naddr to pointer after instruction
-        pos.setParserState(ParserContext::disassembly);
-    }
-
-    void resolveHandles(ParserContext& pos) const
-
-    {
-        TripleSymbol* triple;
-        Constructor* ct;
-        int4 oper, numoper;
-
-        ParserWalker walker(&pos);
-        walker.baseState();
-        while (walker.isState()) {
-            ct = walker.getConstructor();
-            oper = walker.getOperand();
-            numoper = ct->getNumOperands();
-            while (oper < numoper) {
-                OperandSymbol* sym = ct->getOperand(oper);
-                walker.pushOperand(oper); // Descend into node
-                triple = sym->getDefiningSymbol();
-                if (triple != (TripleSymbol*)0) {
-                    if (triple->getType() == SleighSymbol::subtable_symbol)
-                        break;
-                    else // Some other kind of symbol as an operand
-                        triple->getFixedHandle(walker.getParentHandle(), walker);
-                } else { // Must be an expression
-                    PatternExpression* patexp = sym->getDefiningExpression();
-                    intb res = patexp->getValue(walker);
-                    FixedHandle& hand(walker.getParentHandle());
-                    hand.space = pos.getConstSpace(); // Result of expression is a constant
-                    hand.offset_space = (AddrSpace*)0;
-                    hand.offset_offset = (uintb)res;
-                    hand.size = 0; // This size should not get used
-                }
-                walker.popOperand();
-                oper += 1;
-            }
-            if (oper >= numoper) { // Finished processing constructor
-                ConstructTpl* templ = ct->getTempl();
-                if (templ != (ConstructTpl*)0) {
-                    HandleTpl* res = templ->getResult();
-                    if (res != (HandleTpl*)0) // Pop up handle to containing operand
-                        res->fix(walker.getParentHandle(), walker);
-                    // If we need an indicator that the constructor exports nothing try
-                    // else
-                    //   walker.getParentHandle().setInvalid();
-                }
-                walker.popOperand();
-            }
-        }
-        pos.setParserState(ParserContext::pcode);
-    }
-
-    ParserContext* obtainContext(const Address& addr, int4 state) {
-        ParserContext* pos = m_dis_cache->getParserContext(addr);
-        int4 curstate = pos->getParserState();
-        if (curstate >= state)
-            return pos;
-        if (curstate == ParserContext::uninitialized) {
-            resolve(*pos);
-            if (state == ParserContext::disassembly)
-                return pos;
-        }
-        // If we reach here,  state must be ParserContext::pcode
-        resolveHandles(*pos);
-        return pos;
-    }
-
-    int4 myOneInstruction(PcodeEmit& emit, uintb address) {
-        Address baseaddr(getDefaultCodeSpace(), address);
-        if (alignment != 1) {
-            if ((baseaddr.getOffset() % alignment) != 0) {
-                ostringstream s;
-                s << "Instruction address not aligned: " << baseaddr;
-                throw UnimplError(s.str(), 0);
-            }
-        }
-
-        ParserContext* pos = obtainContext(baseaddr, ParserContext::pcode);
-        pos->applyCommits();
-        int4 fallOffset = pos->getLength();
-
-        if (pos->getDelaySlot() > 0) {
-            int4 bytecount = 0;
-            do {
-                // Do not pass pos->getNaddr() to obtainContext, as pos may have been previously cached and had naddr adjusted
-                ParserContext* delaypos = obtainContext(pos->getAddr() + fallOffset, ParserContext::pcode);
-                delaypos->applyCommits();
-                int4 len = delaypos->getLength();
-                fallOffset += len;
-                bytecount += len;
-            } while (bytecount < pos->getDelaySlot());
-            pos->setNaddr(pos->getAddr() + fallOffset);
-        }
-        ParserWalker walker(pos);
-        walker.baseState();
-        m_pcode_cache.clear();
-        SleighBuilder builder(
-            &walker, m_dis_cache.get(), &m_pcode_cache, getConstantSpace(), getUniqueSpace(), unique_allocatemask
-        );
-        try {
-            builder.build(walker.getConstructor()->getTempl(), -1);
-            m_pcode_cache.resolveRelatives();
-            m_pcode_cache.emit(baseaddr, &emit);
-        } catch (UnimplError& err) {
-            ostringstream s;
-            s << "Instruction not implemented in pcode:\n ";
-            ParserWalker* cur = builder.getCurrentWalker();
-            cur->baseState();
-            Constructor* ct = cur->getConstructor();
-            cur->getAddr().printRaw(s);
-            s << ": ";
-            ct->printMnemonic(s, *cur);
-            s << "  ";
-            ct->printBody(s, *cur);
-            err.explain = s.str();
-            err.instruction_length = fallOffset;
-            throw err;
-        }
-        return fallOffset;
-    }
-
-    virtual void registerContext(const string& name, int4 sbit, int4 ebit) { m_ctx.registerVariable(name, sbit, ebit); }
-
-    virtual void setContextDefault(const string& name, uintm val) { m_ctx.setVariableDefault(name, val); }
-
-    virtual void allowContextSet(bool val) const { m_ctx_cache.get()->allowSet(val); }
-
     void liftOne(uint64_t addr) {
         BindingsPcodeEmitter emitter;
-        uint32_t machine_insn_len = this->myOneInstruction(emitter, addr);
+        Address sleigh_addr(m_sleigh->getDefaultCodeSpace(), addr);
+        uint32_t machine_insn_len = m_sleigh->oneInstruction(emitter, sleigh_addr);
         this->m_insns = emitter.takeInsns();
         this->machine_insn_len = machine_insn_len;
     }
@@ -369,8 +163,16 @@ class BindingsSleigh : public SleighBase {
         return &this->m_insns[insn_index];
     }
 
+    AddrSpace* getDefaultCodeSpace() {
+        return m_sleigh->getDefaultCodeSpace();
+    }
+
+    AddrSpace* getSpaceByShortcut(char sc) {
+        return m_sleigh->getSpaceByShortcut(sc);
+    }
+
     const VarnodeData* regByName(const std::string& reg_name) {
-        VarnodeSymbol* sym = (VarnodeSymbol*)this->findSymbol(reg_name);
+        VarnodeSymbol* sym = (VarnodeSymbol*)m_sleigh->findSymbol(reg_name);
 
         if (sym == (VarnodeSymbol*)0)
             return NULL;
@@ -384,7 +186,7 @@ class BindingsSleigh : public SleighBase {
     }
 
     size_t regNameToIndex(AddrSpace* space, uint64_t off, int32_t size) {
-        std::string name = this->getRegisterName(space, off, size);
+        std::string name = m_sleigh->getRegisterName(space, off, size);
         std::vector<std::string>& names = this->m_all_reg_names;
 
         auto it = std::find(names.begin(), names.end(), name);
@@ -419,7 +221,7 @@ PYBIND11_MODULE(pysleigh_bindings, m, py::mod_gil_not_used()) {
     sleighBindingsInitGlobals();
 
     py::class_<BindingsSleigh, py::smart_holder>(m, "Sleigh")
-        .def(py::init<py::buffer, std::unique_ptr<SimpleLoadImage>>())
+        .def(py::init<const std::string&, std::unique_ptr<SimpleLoadImage>>())
         .def("liftOne", &BindingsSleigh::liftOne)
         .def("setVarDefault", &BindingsSleigh::setVarDefault)
         .def("getDefaultCodeSpace", &BindingsSleigh::getDefaultCodeSpace, py::return_value_policy::reference_internal)
@@ -452,4 +254,7 @@ PYBIND11_MODULE(pysleigh_bindings, m, py::mod_gil_not_used()) {
     py::class_<SimpleLoadImage, PySimpleLoadImage, py::smart_holder>(m, "SimpleLoadImage")
         .def(py::init<>())
         .def("loadSimple", &SimpleLoadImage::loadSimple);
+
+    py::exception<ParseError>(m, "ParseError");
+    py::exception<LowlevelError>(m, "LowlevelError");
 }
