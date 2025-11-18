@@ -1,4 +1,5 @@
 #include <exception>
+#include <pybind11/buffer_info.h>
 #include <pybind11/detail/common.h>
 #include <pybind11/detail/using_smart_holder.h>
 #include <pybind11/pybind11.h>
@@ -30,13 +31,14 @@ class SimpleLoadImage : public LoadImage {
     virtual string getArchType(void) const { return "[simple]"; }
     virtual void adjustVma(long adjust) {}
 
-    virtual std::vector<uint1> loadSimple(const Address& addr, int4 amount) = 0;
+    virtual py::buffer loadSimple(const Address& addr, int4 amount) = 0;
     virtual void loadFill(uint1* ptr, int4 size, const Address& addr) {
-        std::vector<uint1> buf = this->loadSimple(addr, size);
-        if (buf.size() != size) {
+        py::buffer buf = this->loadSimple(addr, size);
+        py::buffer_info info = buf.request();
+        if (info.size != size) {
             throw std::runtime_error("load simple returned an unexpected number of bytes");
         }
-        memcpy(ptr, buf.data(), size);
+        memcpy(ptr, info.ptr, size);
     }
 };
 
@@ -44,8 +46,8 @@ class PySimpleLoadImage : public SimpleLoadImage, public py::trampoline_self_lif
   public:
     using SimpleLoadImage::SimpleLoadImage;
 
-    virtual std::vector<uint1> loadSimple(const Address& addr, int4 amount) {
-        PYBIND11_OVERRIDE_PURE(std::vector<uint1>, SimpleLoadImage, loadSimple, addr, amount);
+    virtual py::buffer loadSimple(const Address& addr, int4 amount) {
+        PYBIND11_OVERRIDE_PURE(py::buffer, SimpleLoadImage, loadSimple, addr, amount);
         
     }
 };
@@ -114,7 +116,7 @@ class BindingsPcodeEmitter : public PcodeEmit {
 
 class BindingsSleigh : public SleighBase {
   public:
-    std::unique_ptr<LoadImage> m_buf_load_image;
+    std::unique_ptr<SimpleLoadImage> m_buf_load_image;
     ContextInternal m_ctx;
     mutable PcodeCacher m_pcode_cache;
     std::unique_ptr<ContextCache> m_ctx_cache;
@@ -125,13 +127,14 @@ class BindingsSleigh : public SleighBase {
 
     std::vector<string> m_all_reg_names;
 
-    BindingsSleigh(std::vector<uint1> sla_content, std::unique_ptr<LoadImage> buf_load_image)
+    BindingsSleigh(py::buffer sla_content, std::unique_ptr<SimpleLoadImage> buf_load_image)
         : SleighBase(), m_buf_load_image(std::move(buf_load_image)), m_ctx(), m_pcode_cache(), m_ctx_cache(nullptr),
           m_dis_cache(nullptr), m_insns(), m_all_reg_names() {
         m_ctx_cache = std::make_unique<ContextCache>(&m_ctx);
+        py::buffer_info sla_content_info = sla_content.request();
 
         // convert the sla content buffer to an istream
-        MemoryBuffer buf(sla_content.data(), sla_content.size());
+        MemoryBuffer buf((const uint1*)sla_content_info.ptr, sla_content_info.size);
         std::istream stream(&buf);
 
         // decode the sla specification
@@ -416,7 +419,7 @@ PYBIND11_MODULE(pysleigh_bindings, m, py::mod_gil_not_used()) {
     sleighBindingsInitGlobals();
 
     py::class_<BindingsSleigh, py::smart_holder>(m, "Sleigh")
-        .def(py::init<std::vector<uint1>, std::unique_ptr<LoadImage>>())
+        .def(py::init<py::buffer, std::unique_ptr<SimpleLoadImage>>())
         .def("liftOne", &BindingsSleigh::liftOne)
         .def("setVarDefault", &BindingsSleigh::setVarDefault)
         .def("getDefaultCodeSpace", &BindingsSleigh::getDefaultCodeSpace, py::return_value_policy::reference_internal)
