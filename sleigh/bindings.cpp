@@ -1,4 +1,6 @@
 #include <exception>
+#include <iostream>
+#include <ostream>
 #include <pybind11/buffer_info.h>
 #include <pybind11/detail/common.h>
 #include <pybind11/detail/using_smart_holder.h>
@@ -16,8 +18,11 @@
 #include "./src/translate.hh"
 #include "./src/types.h"
 #include "./src/xml.hh"
+#include "src/interface.hh"
 #include <cstdint>
 #include <stdexcept>
+
+#define STR(X) #X
 
 namespace py = pybind11;
 using namespace ghidra;
@@ -112,6 +117,22 @@ class BindingsPcodeEmitter : public PcodeEmit {
     }
 };
 
+#define DEFINE_EXCEPTION_WRAPPER(EXCEPTION_NAME)                                                                               \
+    class Bindings##EXCEPTION_NAME : public std::runtime_error {                                                               \
+      public:                                                                                                                  \
+        Bindings##EXCEPTION_NAME(const EXCEPTION_NAME& inner) : std::runtime_error(inner.explain) {}                           \
+    }
+
+DEFINE_EXCEPTION_WRAPPER(SleighError);
+DEFINE_EXCEPTION_WRAPPER(UnimplError);
+DEFINE_EXCEPTION_WRAPPER(ParseError);
+DEFINE_EXCEPTION_WRAPPER(DataUnavailError);
+DEFINE_EXCEPTION_WRAPPER(BadDataError);
+DEFINE_EXCEPTION_WRAPPER(DecoderError);
+DEFINE_EXCEPTION_WRAPPER(RecovError);
+DEFINE_EXCEPTION_WRAPPER(EvaluationError);
+DEFINE_EXCEPTION_WRAPPER(LowlevelError);
+
 class BindingsSleigh {
   public:
     std::unique_ptr<SimpleLoadImage> m_buf_load_image;
@@ -126,20 +147,33 @@ class BindingsSleigh {
     BindingsSleigh(const std::string& sla_file_path, std::unique_ptr<SimpleLoadImage> buf_load_image)
         : m_buf_load_image(std::move(buf_load_image)), m_sleigh(nullptr), m_ctx(), m_insns(), m_all_reg_names() {
 
-        m_sleigh = std::make_unique<Sleigh>(m_buf_load_image.get(), &m_ctx);
+#define WRAP_EXCEPTION(EXCEPTION_NAME) catch (const EXCEPTION_NAME& e) { throw Bindings##EXCEPTION_NAME(e); }
 
-        // decode the sla specification
-        DocumentStorage docstorage;
-        Element* sleighroot = docstorage.openDocument(sla_file_path)->getRoot();
-        docstorage.registerTag(sleighroot);
-        m_sleigh->initialize(docstorage);
+        try {
+            m_sleigh = std::make_unique<Sleigh>(m_buf_load_image.get(), &m_ctx);
 
-        // collect all register names
-        map<VarnodeData, string> tmp_all_regs;
-        m_sleigh->getAllRegisters(tmp_all_regs);
-        for (const auto& entry : tmp_all_regs) {
-            m_all_reg_names.push_back(entry.second);
+            // decode the sla specification
+            DocumentStorage docstorage;
+            Element* sleighroot = docstorage.openDocument(sla_file_path)->getRoot();
+            docstorage.registerTag(sleighroot);
+            m_sleigh->initialize(docstorage);
+
+            // collect all register names
+            map<VarnodeData, string> tmp_all_regs;
+            m_sleigh->getAllRegisters(tmp_all_regs);
+            for (const auto& entry : tmp_all_regs) {
+                m_all_reg_names.push_back(entry.second);
+            }
         }
+        WRAP_EXCEPTION(SleighError)
+        WRAP_EXCEPTION(UnimplError)
+        WRAP_EXCEPTION(ParseError)
+        WRAP_EXCEPTION(DataUnavailError)
+        WRAP_EXCEPTION(BadDataError)
+        WRAP_EXCEPTION(DecoderError)
+        WRAP_EXCEPTION(RecovError)
+        WRAP_EXCEPTION(EvaluationError)
+        WRAP_EXCEPTION(LowlevelError)
     }
 
     void liftOne(uint64_t addr) {
@@ -163,13 +197,9 @@ class BindingsSleigh {
         return &this->m_insns[insn_index];
     }
 
-    AddrSpace* getDefaultCodeSpace() {
-        return m_sleigh->getDefaultCodeSpace();
-    }
+    AddrSpace* getDefaultCodeSpace() { return m_sleigh->getDefaultCodeSpace(); }
 
-    AddrSpace* getSpaceByShortcut(char sc) {
-        return m_sleigh->getSpaceByShortcut(sc);
-    }
+    AddrSpace* getSpaceByShortcut(char sc) { return m_sleigh->getSpaceByShortcut(sc); }
 
     const VarnodeData* regByName(const std::string& reg_name) {
         VarnodeSymbol* sym = (VarnodeSymbol*)m_sleigh->findSymbol(reg_name);
@@ -255,6 +285,14 @@ PYBIND11_MODULE(pysleigh_bindings, m, py::mod_gil_not_used()) {
         .def(py::init<>())
         .def("loadSimple", &SimpleLoadImage::loadSimple);
 
-    py::exception<ParseError>(m, "ParseError");
-    py::exception<LowlevelError>(m, "LowlevelError");
+#define DEF_EXCEPTION(EXCEPTION_NAME) py::exception<Bindings##EXCEPTION_NAME>(m, STR(Bindings##EXCEPTION_NAME))
+    DEF_EXCEPTION(SleighError);
+    DEF_EXCEPTION(UnimplError);
+    DEF_EXCEPTION(ParseError);
+    DEF_EXCEPTION(DataUnavailError);
+    DEF_EXCEPTION(BadDataError);
+    DEF_EXCEPTION(DecoderError);
+    DEF_EXCEPTION(RecovError);
+    DEF_EXCEPTION(EvaluationError);
+    DEF_EXCEPTION(LowlevelError);
 }
