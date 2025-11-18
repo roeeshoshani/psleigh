@@ -25,7 +25,7 @@ LDFLAGS :=
 CXXFLAGS += $(shell python3-config --cflags)
 
 # ghidra's code is cooked as hell...
-CXXFLAGS += -Wno-sign-compare -Wno-mismatched-tags
+CXXFLAGS += -Wno-sign-compare -Wno-mismatched-tags -Wno-unused-but-set-variable
 
 # sleigh depends on zlib
 LDFLAGS += -lz
