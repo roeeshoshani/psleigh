@@ -19,6 +19,8 @@ CXX := clang++
 CXXFLAGS :=
 LDFLAGS :=
 
+CXXFLAGS += $(shell python3-config --cflags)
+
 # sleigh depends on zlib
 LDFLAGS += -lz
 
