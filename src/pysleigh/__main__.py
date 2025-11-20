@@ -41,6 +41,26 @@ SLA_RELATIVE_PATH_X86_64 = "x86/data/languages/x86-64.sla"
 class VnSpace:
     shortcut: str
 
+    # the register space.
+    @classmethod
+    def register(cls) -> Self:
+        return cls("%")
+
+    # the const space.
+    @classmethod
+    def const(cls) -> Self:
+        return cls("#")
+
+    # the ram space.
+    @classmethod
+    def ram(cls) -> Self:
+        return cls("r")
+
+    # the unique space.
+    @classmethod
+    def unique(cls) -> Self:
+        return cls("u")
+
     @classmethod
     def from_bindings(cls, bindings_addr_space: BindingsAddrSpace) -> Self:
         return cls(bindings_addr_space.getShortcut())
@@ -63,6 +83,7 @@ class Vn:
             bindings_vn.getOffset(), VnSpace.from_bindings(bindings_vn.getSpace())
         )
         return cls(addr, bindings_vn.getSize())
+
 
 class Opcode(IntEnum):
     # Copy one operand to another
@@ -211,6 +232,7 @@ class Opcode(IntEnum):
     LZCOUNT = 73
     # Value indicating the end of the op-code values
     MAX = 74
+
 
 @dataclass
 class Insn:
