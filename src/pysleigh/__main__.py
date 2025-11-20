@@ -295,14 +295,18 @@ class VnSpaceInfo:
     def space(self) -> VnSpace:
         return VnSpace(self.shortcut)
 
+
 @dataclass
 class NoSuchRegErr(Exception):
     reg_name: str
 
+
 class Sleigh:
     def __init__(self, sla_relative_path: str):
         sla_path = PROCESSORS_DIR.joinpath(sla_relative_path)
-        self.bindings_sleigh = BindingsSleigh(str(sla_path), MyLoadImage())
+        self.bindings_sleigh: BindingsSleigh = BindingsSleigh(
+            str(sla_path), MyLoadImage()
+        )
 
     def lift_one(self, addr: int) -> LiftRes:
         bindings_lift_res = self.bindings_sleigh.liftOne(addr)
@@ -327,10 +331,17 @@ class Sleigh:
             raise NoSuchRegErr(name)
         return Vn.from_bindings(bindings_vn)
 
+    def all_reg_names(self) -> List[str]:
+        regs_amount = self.bindings_sleigh.allRegNamesAmount()
+        return [
+            self.bindings_sleigh.allRegNamesGetByIndex(i) for i in range(regs_amount)
+        ]
+
 
 sleigh = Sleigh(SLA_RELATIVE_PATH_X86_64)
 res = sleigh.lift_one(0)
 print(res)
 
 print(sleigh.space_info(sleigh.default_code_space()))
-print(sleigh.reg_by_name('RSP'))
+print(sleigh.reg_by_name("RSP"))
+print(sleigh.all_reg_names())
