@@ -79,6 +79,10 @@ struct BindingsInsn {
 
     size_t m_machine_insn_len;
 
+    int opcode() {
+        return m_opcode;
+    }
+
     VarnodeData* outVar() {
         if (this->m_has_out_var) {
             return nullptr;
@@ -267,7 +271,7 @@ AddrSpace* varnodeGetSpace(const VarnodeData* v) { return v->space; }
 PYBIND11_MODULE(pysleigh_bindings, m, py::mod_gil_not_used()) {
     sleighBindingsInitGlobals();
 
-    py::class_<BindingsSleigh, py::smart_holder>(m, "Sleigh")
+    py::class_<BindingsSleigh, py::smart_holder>(m, "BindingsSleigh")
         .def(py::init<const std::string&, std::unique_ptr<SimpleLoadImage>>())
         .def("liftOne", &BindingsSleigh::liftOne)
         .def("setVarDefault", &BindingsSleigh::setVarDefault)
@@ -278,29 +282,30 @@ PYBIND11_MODULE(pysleigh_bindings, m, py::mod_gil_not_used()) {
         .def("allRegNamesAmount", &BindingsSleigh::allRegNamesAmount)
         .def("allRegNamesGetByIndex", &BindingsSleigh::allRegNamesGetByIndex, py::return_value_policy::reference_internal);
 
-    py::class_<LiftRes, py::smart_holder>(m, "LiftRes")
+    py::class_<LiftRes, py::smart_holder>(m, "BindingsLiftRes")
         .def("machineInsnLen", &LiftRes::machineInsnLen)
         .def("insnsAmount", &LiftRes::insnsAmount)
         .def("insn", &LiftRes::insn, py::return_value_policy::reference_internal);
 
-    py::class_<BindingsInsn, py::smart_holder>(m, "Insn")
+    py::class_<BindingsInsn, py::smart_holder>(m, "BindingsInsn")
+        .def("opcode", &BindingsInsn::opcode)
         .def("outVar", &BindingsInsn::outVar, py::return_value_policy::reference_internal)
         .def("inVarsAmount", &BindingsInsn::inVarsAmount)
         .def("inVar", &BindingsInsn::inVar, py::return_value_policy::reference_internal);
 
-    py::class_<VarnodeData, py::smart_holder>(m, "VarnodeData")
+    py::class_<VarnodeData, py::smart_holder>(m, "BindingsVarnodeData")
         .def("getOffset", &varnodeGetOffset)
         .def("getSize", &varnodeGetSize)
         .def("getSpace", &varnodeGetSpace, py::return_value_policy::reference_internal);
 
-    py::class_<AddrSpace, py::smart_holder>(m, "AddrSpace")
+    py::class_<AddrSpace, py::smart_holder>(m, "BindingsAddrSpace")
         .def("getName", &AddrSpace::getName, py::return_value_policy::reference_internal)
         .def("getShortcut", &AddrSpace::getShortcut)
         .def("getType", &AddrSpace::getType)
         .def("getWordSize", &AddrSpace::getWordSize)
         .def("getAddrSize", &AddrSpace::getAddrSize);
 
-    py::class_<SimpleLoadImage, PySimpleLoadImage, py::smart_holder>(m, "SimpleLoadImage")
+    py::class_<SimpleLoadImage, PySimpleLoadImage, py::smart_holder>(m, "BindingsSimpleLoadImage")
         .def(py::init<>())
         .def("loadSimple", &SimpleLoadImage::loadSimple);
 
