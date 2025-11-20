@@ -1,5 +1,6 @@
 #include <exception>
 #include <iostream>
+#include <memory>
 #include <ostream>
 #include <pybind11/buffer_info.h>
 #include <pybind11/detail/common.h>
@@ -95,15 +96,12 @@ struct BindingsInsn {
     }
 };
 
-class BindingsPcodeEmitter : public PcodeEmit {
+class LiftRes : public PcodeEmit {
   public:
     std::vector<BindingsInsn> m_insns;
+    size_t m_machine_insn_len;
 
-    BindingsPcodeEmitter() : m_insns() {}
-
-    std::vector<BindingsInsn> takeInsns() { return m_insns; }
-
-    void reset() { m_insns.clear(); }
+    LiftRes() : m_insns(), m_machine_insn_len() {}
 
     virtual void dump(const Address& addr, OpCode opc, VarnodeData* outvar, VarnodeData* vars, int4 isize) {
         BindingsInsn insn = {};
@@ -121,6 +119,18 @@ class BindingsPcodeEmitter : public PcodeEmit {
 
         m_insns.push_back(insn);
     }
+
+    size_t machineInsnLen() { return this->m_machine_insn_len; }
+
+    size_t insnsAmount() { return this->m_insns.size(); }
+
+    BindingsInsn* insn(size_t insn_index) {
+        if (insn_index >= this->m_insns.size()) {
+            throw py::index_error("insn index out of range");
+        }
+        return &this->m_insns[insn_index];
+    }
+
 };
 
 #define DEFINE_EXCEPTION_WRAPPER(EXCEPTION_NAME, ...)                                                                          \
@@ -143,16 +153,15 @@ DEFINE_EXCEPTION_WRAPPER(LowlevelError, "low level");
 class BindingsSleigh {
   public:
     std::unique_ptr<SimpleLoadImage> m_buf_load_image;
-    std::unique_ptr<Sleigh> m_sleigh;
+
     ContextInternal m_ctx;
 
-    std::vector<BindingsInsn> m_insns;
-    size_t machine_insn_len;
+    std::unique_ptr<Sleigh> m_sleigh;
 
     std::vector<string> m_all_reg_names;
 
     BindingsSleigh(const std::string& sla_file_path, std::unique_ptr<SimpleLoadImage> buf_load_image)
-        : m_buf_load_image(std::move(buf_load_image)), m_sleigh(nullptr), m_ctx(), m_insns(), m_all_reg_names() {
+        : m_buf_load_image(std::move(buf_load_image)), m_ctx(), m_sleigh(nullptr), m_all_reg_names() {
 
 #define WRAP_EXCEPTION(EXCEPTION_NAME)                                                                                         \
     catch (const EXCEPTION_NAME& e) {                                                                                          \
@@ -195,26 +204,15 @@ class BindingsSleigh {
         WRAP_EXCEPTION(LowlevelError)
     }
 
-    void liftOne(uint64_t addr) {
-        BindingsPcodeEmitter emitter;
+    std::unique_ptr<LiftRes> liftOne(uint64_t addr) {
+        std::unique_ptr<LiftRes> lift_res = std::make_unique<LiftRes>();
         Address sleigh_addr(m_sleigh->getDefaultCodeSpace(), addr);
-        uint32_t machine_insn_len = m_sleigh->oneInstruction(emitter, sleigh_addr);
-        this->m_insns = emitter.takeInsns();
-        this->machine_insn_len = machine_insn_len;
+        uint32_t machine_insn_len = m_sleigh->oneInstruction(*lift_res, sleigh_addr);
+        lift_res->m_machine_insn_len = machine_insn_len;
+        return lift_res;
     }
 
     void setVarDefault(const std::string& name, uint32_t value) { this->m_ctx.setVariableDefault(name, value); }
-
-    size_t machineInsnLen() { return this->machine_insn_len; }
-
-    size_t insnsAmount() { return this->m_insns.size(); }
-
-    BindingsInsn* insn(size_t insn_index) {
-        if (insn_index >= this->m_insns.size()) {
-            throw py::index_error("insn index out of range");
-        }
-        return &this->m_insns[insn_index];
-    }
 
     AddrSpace* getDefaultCodeSpace() { return m_sleigh->getDefaultCodeSpace(); }
 
@@ -274,14 +272,16 @@ PYBIND11_MODULE(pysleigh_bindings, m, py::mod_gil_not_used()) {
         .def("liftOne", &BindingsSleigh::liftOne)
         .def("setVarDefault", &BindingsSleigh::setVarDefault)
         .def("getDefaultCodeSpace", &BindingsSleigh::getDefaultCodeSpace, py::return_value_policy::reference_internal)
-        .def("machineInsnLen", &BindingsSleigh::machineInsnLen)
-        .def("insnsAmount", &BindingsSleigh::insnsAmount)
-        .def("insn", &BindingsSleigh::insn, py::return_value_policy::reference_internal)
         .def("getSpaceByShortcut", &BindingsSleigh::getSpaceByShortcut, py::return_value_policy::reference_internal)
         .def("regByName", &BindingsSleigh::regByName, py::return_value_policy::reference_internal)
         .def("regNameToIndex", &BindingsSleigh::regNameToIndex)
         .def("allRegNamesAmount", &BindingsSleigh::allRegNamesAmount)
         .def("allRegNamesGetByIndex", &BindingsSleigh::allRegNamesGetByIndex, py::return_value_policy::reference_internal);
+
+    py::class_<LiftRes, py::smart_holder>(m, "LiftRes")
+        .def("machineInsnLen", &LiftRes::machineInsnLen)
+        .def("insnsAmount", &LiftRes::insnsAmount)
+        .def("insn", &LiftRes::insn, py::return_value_policy::reference_internal);
 
     py::class_<BindingsInsn, py::smart_holder>(m, "Insn")
         .def("outVar", &BindingsInsn::outVar, py::return_value_policy::reference_internal)
