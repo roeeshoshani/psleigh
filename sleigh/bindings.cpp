@@ -84,7 +84,7 @@ struct BindingsInsn {
     }
 
     VarnodeData* outVar() {
-        if (this->m_has_out_var) {
+        if (!this->m_has_out_var) {
             return nullptr;
         }
         return &this->m_out_var;
