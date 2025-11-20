@@ -245,7 +245,7 @@ class BindingsSleigh {
             // return the index of the name in the list
             return std::distance(names.begin(), it);
         } else {
-            return SIZE_MAX;
+            return allRegNamesAmount();
         }
     }
 

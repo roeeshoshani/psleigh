@@ -302,11 +302,15 @@ class NoSuchRegErr(Exception):
 
 
 class Sleigh:
+    bindings_sleigh: BindingsSleigh
+    all_reg_names: List[str]
+
     def __init__(self, sla_relative_path: str):
         sla_path = PROCESSORS_DIR.joinpath(sla_relative_path)
         self.bindings_sleigh: BindingsSleigh = BindingsSleigh(
             str(sla_path), MyLoadImage()
         )
+        self.all_reg_names: List[str] = self._fetch_all_reg_names_from_bindings()
 
     def lift_one(self, addr: int) -> LiftRes:
         bindings_lift_res = self.bindings_sleigh.liftOne(addr)
@@ -331,10 +335,23 @@ class Sleigh:
             raise NoSuchRegErr(name)
         return Vn.from_bindings(bindings_vn)
 
-    def all_reg_names(self) -> List[str]:
-        regs_amount = self.bindings_sleigh.allRegNamesAmount()
+    def reg_to_name(self, reg: Vn) -> Optional[str]:
+        all_regs_amount = self.bindings_sleigh.allRegNamesAmount()
+
+        bindings_space = self.bindings_sleigh.getSpaceByShortcut(reg.addr.space.shortcut)
+
+        name_index = self.bindings_sleigh.regNameToIndex(bindings_space, reg.addr.off, reg.size)
+
+        # the bindings returns the regs amount to indicate that the provided varnode is not a named register
+        if name_index == all_regs_amount:
+            return None
+
+        return self.all_reg_names[name_index]
+
+    def _fetch_all_reg_names_from_bindings(self) -> List[str]:
+        all_regs_amount = self.bindings_sleigh.allRegNamesAmount()
         return [
-            self.bindings_sleigh.allRegNamesGetByIndex(i) for i in range(regs_amount)
+            self.bindings_sleigh.allRegNamesGetByIndex(i) for i in range(all_regs_amount)
         ]
 
 
@@ -344,4 +361,5 @@ print(res)
 
 print(sleigh.space_info(sleigh.default_code_space()))
 print(sleigh.reg_by_name("RSP"))
-print(sleigh.all_reg_names())
+print(sleigh.all_reg_names)
+print(sleigh.reg_to_name(sleigh.reg_by_name("RSP")))
