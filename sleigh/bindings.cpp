@@ -29,6 +29,39 @@
 namespace py = pybind11;
 using namespace ghidra;
 
+#define DEFINE_EXCEPTION_WRAPPER(EXCEPTION_NAME, ...)                                                                          \
+    class Bindings##EXCEPTION_NAME : public std::runtime_error {                                                               \
+      public:                                                                                                                  \
+        Bindings##EXCEPTION_NAME(const EXCEPTION_NAME& inner)                                                                  \
+            : std::runtime_error("sleigh" __VA_OPT__(" " __VA_ARGS__) " error: " + inner.explain) {}                           \
+    }
+
+DEFINE_EXCEPTION_WRAPPER(SleighError);
+DEFINE_EXCEPTION_WRAPPER(UnimplError, "unimplemented");
+DEFINE_EXCEPTION_WRAPPER(ParseError, "parse");
+DEFINE_EXCEPTION_WRAPPER(DataUnavailError, "data unavailable");
+DEFINE_EXCEPTION_WRAPPER(BadDataError, "bad data");
+DEFINE_EXCEPTION_WRAPPER(DecoderError, "decoder");
+DEFINE_EXCEPTION_WRAPPER(RecovError, "recoverable");
+DEFINE_EXCEPTION_WRAPPER(EvaluationError, "evaluation");
+DEFINE_EXCEPTION_WRAPPER(LowlevelError, "low level");
+
+#define WRAP_EXCEPTION(EXCEPTION_NAME)                                                                                         \
+    catch (const EXCEPTION_NAME& e) {                                                                                          \
+        throw Bindings##EXCEPTION_NAME(e);                                                                                     \
+    }
+
+#define WRAP_EXCEPTIONS()                                                                                                      \
+    WRAP_EXCEPTION(SleighError)                                                                                                \
+    WRAP_EXCEPTION(UnimplError)                                                                                                \
+    WRAP_EXCEPTION(ParseError)                                                                                                 \
+    WRAP_EXCEPTION(DataUnavailError)                                                                                           \
+    WRAP_EXCEPTION(BadDataError)                                                                                               \
+    WRAP_EXCEPTION(DecoderError)                                                                                               \
+    WRAP_EXCEPTION(RecovError)                                                                                                 \
+    WRAP_EXCEPTION(EvaluationError)                                                                                            \
+    WRAP_EXCEPTION(LowlevelError)
+
 class SymbolIsNotARegisterError : public std::exception {};
 
 class SimpleLoadImage : public LoadImage {
@@ -39,17 +72,22 @@ class SimpleLoadImage : public LoadImage {
 
     virtual py::buffer loadSimple(uint64_t addr, int4 amount) = 0;
     virtual void loadFill(uint1* ptr, int4 size, const Address& addr) {
-        AddrSpace* space = addr.getSpace();
-        if (space != space->getManager()->getDefaultCodeSpace()) {
-            throw std::runtime_error("attempted to load data from a SimpleLoadImage instance using an address space other than "
-                                     "the default code space");
+        try {
+            AddrSpace* space = addr.getSpace();
+            if (space != space->getManager()->getDefaultCodeSpace()) {
+                throw std::runtime_error(
+                    "attempted to load data from a SimpleLoadImage instance using an address space other than "
+                    "the default code space"
+                );
+            }
+            py::buffer buf = this->loadSimple(addr.getOffset(), size);
+            py::buffer_info info = buf.request();
+            if (info.size != size) {
+                throw std::runtime_error("load simple returned an unexpected number of bytes");
+            }
+            memcpy(ptr, info.ptr, size);
         }
-        py::buffer buf = this->loadSimple(addr.getOffset(), size);
-        py::buffer_info info = buf.request();
-        if (info.size != size) {
-            throw std::runtime_error("load simple returned an unexpected number of bytes");
-        }
-        memcpy(ptr, info.ptr, size);
+        WRAP_EXCEPTIONS()
     }
 };
 
@@ -80,23 +118,37 @@ struct BindingsInsn {
     size_t m_machine_insn_len;
 
     int opcode() {
-        return m_opcode;
+        try {
+            return m_opcode;
+        }
+        WRAP_EXCEPTIONS()
     }
 
     VarnodeData* outVar() {
-        if (!this->m_has_out_var) {
-            return nullptr;
+        try {
+            if (!this->m_has_out_var) {
+                return nullptr;
+            }
+            return &this->m_out_var;
         }
-        return &this->m_out_var;
+        WRAP_EXCEPTIONS()
     }
 
-    size_t inVarsAmount() { return this->m_in_vars.size(); }
+    size_t inVarsAmount() {
+        try {
+            return this->m_in_vars.size();
+        }
+        WRAP_EXCEPTIONS()
+    }
 
     VarnodeData* inVar(size_t index) {
-        if (index >= this->m_in_vars.size()) {
-            throw py::index_error("input varnode index out of range");
+        try {
+            if (index >= this->m_in_vars.size()) {
+                throw py::index_error("input varnode index out of range");
+            }
+            return &this->m_in_vars[index];
         }
-        return &this->m_in_vars[index];
+        WRAP_EXCEPTIONS()
     }
 };
 
@@ -124,35 +176,30 @@ class LiftRes : public PcodeEmit {
         m_insns.push_back(insn);
     }
 
-    size_t machineInsnLen() { return this->m_machine_insn_len; }
+    size_t machineInsnLen() {
+        try {
+            return this->m_machine_insn_len;
+        }
+        WRAP_EXCEPTIONS()
+    }
 
-    size_t insnsAmount() { return this->m_insns.size(); }
+    size_t insnsAmount() {
+        try {
+            return this->m_insns.size();
+        }
+        WRAP_EXCEPTIONS()
+    }
 
     BindingsInsn* insn(size_t insn_index) {
-        if (insn_index >= this->m_insns.size()) {
-            throw py::index_error("insn index out of range");
+        try {
+            if (insn_index >= this->m_insns.size()) {
+                throw py::index_error("insn index out of range");
+            }
+            return &this->m_insns[insn_index];
         }
-        return &this->m_insns[insn_index];
+        WRAP_EXCEPTIONS()
     }
-
 };
-
-#define DEFINE_EXCEPTION_WRAPPER(EXCEPTION_NAME, ...)                                                                          \
-    class Bindings##EXCEPTION_NAME : public std::runtime_error {                                                               \
-      public:                                                                                                                  \
-        Bindings##EXCEPTION_NAME(const EXCEPTION_NAME& inner)                                                                  \
-            : std::runtime_error("sleigh" __VA_OPT__(" " __VA_ARGS__) " error: " + inner.explain) {}                           \
-    }
-
-DEFINE_EXCEPTION_WRAPPER(SleighError);
-DEFINE_EXCEPTION_WRAPPER(UnimplError, "unimplemented");
-DEFINE_EXCEPTION_WRAPPER(ParseError, "parse");
-DEFINE_EXCEPTION_WRAPPER(DataUnavailError, "data unavailable");
-DEFINE_EXCEPTION_WRAPPER(BadDataError, "bad data");
-DEFINE_EXCEPTION_WRAPPER(DecoderError, "decoder");
-DEFINE_EXCEPTION_WRAPPER(RecovError, "recoverable");
-DEFINE_EXCEPTION_WRAPPER(EvaluationError, "evaluation");
-DEFINE_EXCEPTION_WRAPPER(LowlevelError, "low level");
 
 class BindingsSleigh {
   public:
@@ -164,14 +211,10 @@ class BindingsSleigh {
 
     std::vector<string> m_all_reg_names;
 
-    BindingsSleigh(const std::string& sla_file_path, std::unique_ptr<SimpleLoadImage> buf_load_image)
+    BindingsSleigh(
+        const std::string& sla_file_path, const std::string& pspec_file_path, std::unique_ptr<SimpleLoadImage> buf_load_image
+    )
         : m_buf_load_image(std::move(buf_load_image)), m_ctx(), m_sleigh(nullptr), m_all_reg_names() {
-
-#define WRAP_EXCEPTION(EXCEPTION_NAME)                                                                                         \
-    catch (const EXCEPTION_NAME& e) {                                                                                          \
-        throw Bindings##EXCEPTION_NAME(e);                                                                                     \
-    }
-
         try {
             m_sleigh = std::make_unique<Sleigh>(m_buf_load_image.get(), &m_ctx);
 
@@ -183,12 +226,21 @@ class BindingsSleigh {
             }
 
             // decode the sla specification
-            DocumentStorage docstorage;
-            std::stringstream strstream;
-            strstream << "<sleigh>" << sla_file_path << "</sleigh>";
-            Element* sleighroot = docstorage.parseDocument(strstream)->getRoot();
-            docstorage.registerTag(sleighroot);
-            m_sleigh->initialize(docstorage);
+            DocumentStorage slaspecDocStorage;
+            std::stringstream slaspecStrStream;
+            slaspecStrStream << "<sleigh>" << sla_file_path << "</sleigh>";
+            Element* sleighroot = slaspecDocStorage.parseDocument(slaspecStrStream)->getRoot();
+            slaspecDocStorage.registerTag(sleighroot);
+            m_sleigh->initialize(slaspecDocStorage);
+
+            // decode processor specification (pspec)
+            DocumentStorage pspecDocStorage;
+            pspecDocStorage.openDocument(pspec_file_path);
+            const Element* el = pspecDocStorage.getTag("processor_spec");
+            if (el == (const Element*)0)
+                throw LowlevelError("No processor configuration tag found");
+            XmlDecode pspecDecoder((AddrSpaceManager*)&*m_sleigh, el);
+            m_ctx.decodeFromSpec(pspecDecoder);
 
             // collect all register names
             map<VarnodeData, string> tmp_all_regs;
@@ -197,79 +249,154 @@ class BindingsSleigh {
                 m_all_reg_names.push_back(entry.second);
             }
         }
-        WRAP_EXCEPTION(SleighError)
-        WRAP_EXCEPTION(UnimplError)
-        WRAP_EXCEPTION(ParseError)
-        WRAP_EXCEPTION(DataUnavailError)
-        WRAP_EXCEPTION(BadDataError)
-        WRAP_EXCEPTION(DecoderError)
-        WRAP_EXCEPTION(RecovError)
-        WRAP_EXCEPTION(EvaluationError)
-        WRAP_EXCEPTION(LowlevelError)
+        WRAP_EXCEPTIONS()
     }
 
     std::unique_ptr<LiftRes> liftOne(uint64_t addr) {
-        std::unique_ptr<LiftRes> lift_res = std::make_unique<LiftRes>();
-        Address sleigh_addr(m_sleigh->getDefaultCodeSpace(), addr);
-        uint32_t machine_insn_len = m_sleigh->oneInstruction(*lift_res, sleigh_addr);
-        lift_res->m_machine_insn_len = machine_insn_len;
-        return lift_res;
+        try {
+            std::unique_ptr<LiftRes> lift_res = std::make_unique<LiftRes>();
+            Address sleigh_addr(m_sleigh->getDefaultCodeSpace(), addr);
+            uint32_t machine_insn_len = m_sleigh->oneInstruction(*lift_res, sleigh_addr);
+            lift_res->m_machine_insn_len = machine_insn_len;
+            return lift_res;
+        }
+        WRAP_EXCEPTIONS()
     }
 
-    void setVarDefault(const std::string& name, uint32_t value) { this->m_ctx.setVariableDefault(name, value); }
+    void setVarDefault(const std::string& name, uint32_t value) {
+        try {
+            this->m_ctx.setVariableDefault(name, value);
+        }
+        WRAP_EXCEPTIONS()
+    }
 
-    AddrSpace* getDefaultCodeSpace() { return m_sleigh->getDefaultCodeSpace(); }
+    AddrSpace* getDefaultCodeSpace() {
+        try {
+            return m_sleigh->getDefaultCodeSpace();
+        }
+        WRAP_EXCEPTIONS()
+    }
 
-    AddrSpace* getSpaceByShortcut(char sc) { return m_sleigh->getSpaceByShortcut(sc); }
+    AddrSpace* getSpaceByShortcut(char sc) {
+        try {
+            return m_sleigh->getSpaceByShortcut(sc);
+        }
+        WRAP_EXCEPTIONS()
+    }
 
     const VarnodeData* regByName(const std::string& reg_name) {
-        VarnodeSymbol* sym = (VarnodeSymbol*)m_sleigh->findSymbol(reg_name);
+        try {
+            VarnodeSymbol* sym = (VarnodeSymbol*)m_sleigh->findSymbol(reg_name);
 
-        if (sym == (VarnodeSymbol*)0)
-            return NULL;
+            if (sym == (VarnodeSymbol*)0)
+                return NULL;
 
-        if (sym->getType() != SleighSymbol::varnode_symbol)
-            throw SymbolIsNotARegisterError();
+            if (sym->getType() != SleighSymbol::varnode_symbol)
+                throw SymbolIsNotARegisterError();
 
-        const VarnodeData& vn = sym->getFixedVarnode();
+            const VarnodeData& vn = sym->getFixedVarnode();
 
-        return &vn;
+            return &vn;
+        }
+        WRAP_EXCEPTIONS()
     }
 
     size_t regNameToIndex(AddrSpace* space, uint64_t off, int32_t size) {
-        std::string name = m_sleigh->getRegisterName(space, off, size);
-        std::vector<std::string>& names = this->m_all_reg_names;
+        try {
+            std::string name = m_sleigh->getRegisterName(space, off, size);
+            std::vector<std::string>& names = this->m_all_reg_names;
 
-        auto it = std::find(names.begin(), names.end(), name);
-        if (it != names.end()) {
-            // return the index of the name in the list
-            return std::distance(names.begin(), it);
-        } else {
-            return allRegNamesAmount();
+            auto it = std::find(names.begin(), names.end(), name);
+            if (it != names.end()) {
+                // return the index of the name in the list
+                return std::distance(names.begin(), it);
+            } else {
+                return allRegNamesAmount();
+            }
         }
+        WRAP_EXCEPTIONS()
     }
 
-    size_t allRegNamesAmount() { return this->m_all_reg_names.size(); }
+    size_t allRegNamesAmount() {
+        try {
+            return this->m_all_reg_names.size();
+        }
+        WRAP_EXCEPTIONS()
+    }
 
-    const std::string& allRegNamesGetByIndex(size_t index) { return this->m_all_reg_names[index]; }
+    const std::string& allRegNamesGetByIndex(size_t index) {
+        try {
+            return this->m_all_reg_names[index];
+        }
+        WRAP_EXCEPTIONS()
+    }
 };
 
 void sleighBindingsInitGlobals() {
-    static std::atomic<bool> initialized = false;
-    if (!initialized.exchange(true)) {
-        AttributeId::initialize();
-        ElementId::initialize();
+    try {
+        static std::atomic<bool> initialized = false;
+        if (!initialized.exchange(true)) {
+            AttributeId::initialize();
+            ElementId::initialize();
+        }
     }
+    WRAP_EXCEPTIONS()
 }
 
-uint64_t varnodeGetOffset(const VarnodeData* v) { return v->offset; }
+uint64_t varnodeGetOffset(const VarnodeData* v) {
+    try {
+        return v->offset;
+    }
+    WRAP_EXCEPTIONS()
+}
 
-uint32_t varnodeGetSize(const VarnodeData* v) { return v->size; }
+uint32_t varnodeGetSize(const VarnodeData* v) {
+    try {
+        return v->size;
+    }
+    WRAP_EXCEPTIONS()
+}
 
-AddrSpace* varnodeGetSpace(const VarnodeData* v) { return v->space; }
+AddrSpace* varnodeGetSpace(const VarnodeData* v) {
+    try {
+        return v->space;
+    }
+    WRAP_EXCEPTIONS()
+}
 
 int addrSpaceGetType(const AddrSpace* space) {
-    return (int)space->getType();
+    try {
+        return (int)space->getType();
+    }
+    WRAP_EXCEPTIONS()
+}
+
+uint4 addrSpaceGetWordSize(const AddrSpace* space) {
+    try {
+        return space->getWordSize();
+    }
+    WRAP_EXCEPTIONS()
+}
+
+uint4 addrSpaceGetAddrSize(const AddrSpace* space) {
+    try {
+        return space->getAddrSize();
+    }
+    WRAP_EXCEPTIONS()
+}
+
+const std::string& addrSpaceGetName(const AddrSpace* space) {
+    try {
+        return space->getName();
+    }
+    WRAP_EXCEPTIONS()
+}
+
+char addrSpaceGetShortcut(const AddrSpace* space) {
+    try {
+        return space->getShortcut();
+    }
+    WRAP_EXCEPTIONS()
 }
 
 PYBIND11_MODULE(pysleigh_bindings, m, py::mod_gil_not_used()) {
@@ -303,11 +430,11 @@ PYBIND11_MODULE(pysleigh_bindings, m, py::mod_gil_not_used()) {
         .def("getSpace", &varnodeGetSpace, py::return_value_policy::reference_internal);
 
     py::class_<AddrSpace, py::smart_holder>(m, "BindingsAddrSpace")
-        .def("getName", &AddrSpace::getName, py::return_value_policy::reference_internal)
-        .def("getShortcut", &AddrSpace::getShortcut)
+        .def("getName", &addrSpaceGetName, py::return_value_policy::reference_internal)
+        .def("getShortcut", &addrSpaceGetShortcut)
         .def("getType", &addrSpaceGetType)
-        .def("getWordSize", &AddrSpace::getWordSize)
-        .def("getAddrSize", &AddrSpace::getAddrSize);
+        .def("getWordSize", &addrSpaceGetWordSize)
+        .def("getAddrSize", &addrSpaceGetAddrSize);
 
     py::class_<SimpleLoadImage, PySimpleLoadImage, py::smart_holder>(m, "BindingsSimpleLoadImage")
         .def(py::init<>())

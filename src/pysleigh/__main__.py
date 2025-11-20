@@ -302,14 +302,22 @@ class NoSuchRegErr(Exception):
 
 
 class Sleigh:
+    sla_relative_path: str
+    pspec_relative_path: str
     bindings_sleigh: BindingsSleigh
     all_reg_names: List[str]
 
-    def __init__(self, sla_relative_path: str):
+    def __init__(self, sla_relative_path: str, pspec_relative_path: str):
+        self.sla_relative_path = sla_relative_path
+        self.pspec_relative_path = pspec_relative_path
+
         sla_path = PROCESSORS_DIR.joinpath(sla_relative_path)
+        pspec_path = PROCESSORS_DIR.joinpath(pspec_relative_path)
+
         self.bindings_sleigh: BindingsSleigh = BindingsSleigh(
             str(sla_path), MyLoadImage()
         )
+
         self.all_reg_names: List[str] = self._fetch_all_reg_names_from_bindings()
 
     def lift_one(self, addr: int) -> LiftRes:
