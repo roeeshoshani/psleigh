@@ -11,6 +11,7 @@ from pathlib import Path
 from abc import ABC, ABCMeta, abstractmethod
 from dataclasses import dataclass
 from typing import List, Optional, Self
+from enum import IntEnum
 
 PROCESSORS_DIR = Path(__file__).parent.joinpath("processors")
 
@@ -63,16 +64,163 @@ class Vn:
         )
         return cls(addr, bindings_vn.getSize())
 
+class Opcode(IntEnum):
+    # Copy one operand to another
+    COPY = 1
+    # Load from a pointer into a specified address space
+    LOAD = 2
+    # Store at a pointer into a specified address space
+    STORE = 3
+    # Always branch
+    BRANCH = 4
+    # Conditional branch
+    CBRANCH = 5
+    # Indirect branch (jumptable)
+    BRANCHIND = 6
+    # Call to an absolute address
+    CALL = 7
+    # Call through an indirect address
+    CALLIND = 8
+    # User-defined operation
+    CALLOTHER = 9
+    # Return from subroutine
+    RETURN = 10
+    # Integer comparison, equality (==)
+    INT_EQUAL = 11
+    # Integer comparison, in-equality (!=)
+    INT_NOTEQUAL = 12
+    # Integer comparison, signed less-than (<)
+    INT_SLESS = 13
+    # Integer comparison, signed less-than-or-equal (<=)
+    INT_SLESSEQUAL = 14
+    # Integer comparison, unsigned less-than (<). This also indicates a borrow on unsigned substraction.
+    INT_LESS = 15
+    # Integer comparison, unsigned less-than-or-equal (<=)
+    INT_LESSEQUAL = 16
+    # Zero extension
+    INT_ZEXT = 17
+    # Sign extension
+    INT_SEXT = 18
+    # Addition, signed or unsigned (+)
+    INT_ADD = 19
+    # Subtraction, signed or unsigned (-)
+    INT_SUB = 20
+    # Test for unsigned carry
+    INT_CARRY = 21
+    # Test for signed carry
+    INT_SCARRY = 22
+    # Test for signed borrow
+    INT_SBORROW = 23
+    # Twos complement
+    INT_2COMP = 24
+    # Logical/bitwise negation (~)
+    INT_NEGATE = 25
+    # Logical/bitwise exclusive-or (^)
+    INT_XOR = 26
+    # Logical/bitwise and (&)
+    INT_AND = 27
+    # Logical/bitwise or (|)
+    INT_OR = 28
+    # Left shift (<<)
+    INT_LEFT = 29
+    # Right shift, logical (>>)
+    INT_RIGHT = 30
+    # Right shift, arithmetic (>>)
+    INT_SRIGHT = 31
+    # Integer multiplication, signed and unsigned (*)
+    INT_MULT = 32
+    # Integer division, unsigned (/)
+    INT_DIV = 33
+    # Integer division, signed (/)
+    INT_SDIV = 34
+    # Remainder/modulo, unsigned (%)
+    INT_REM = 35
+    # Remainder/modulo, signed (%)
+    INT_SREM = 36
+    # Boolean negate (!)
+    BOOL_NEGATE = 37
+    # Boolean exclusive-or (^^)
+    BOOL_XOR = 38
+    # Boolean and (&&)
+    BOOL_AND = 39
+    # Boolean or (||)
+    BOOL_OR = 40
+    # Floating-point comparison, equality (==)
+    FLOAT_EQUAL = 41
+    # Floating-point comparison, in-equality (!=)
+    FLOAT_NOTEQUAL = 42
+    # Floating-point comparison, less-than (<)
+    FLOAT_LESS = 43
+    # Floating-point comparison, less-than-or-equal (<=)
+    FLOAT_LESSEQUAL = 44
+    # Not-a-number test (NaN)
+    FLOAT_NAN = 46
+    # Floating-point addition (+)
+    FLOAT_ADD = 47
+    # Floating-point division (/)
+    FLOAT_DIV = 48
+    # Floating-point multiplication (*)
+    FLOAT_MULT = 49
+    # Floating-point subtraction (-)
+    FLOAT_SUB = 50
+    # Floating-point negation (-)
+    FLOAT_NEG = 51
+    # Floating-point absolute value (abs)
+    FLOAT_ABS = 52
+    # Floating-point square root (sqrt)
+    FLOAT_SQRT = 53
+    # Convert an integer to a floating-point
+    FLOAT_INT2FLOAT = 54
+    # Convert between different floating-point sizes
+    FLOAT_FLOAT2FLOAT = 55
+    # Round towards zero
+    FLOAT_TRUNC = 56
+    # Round towards +infinity
+    FLOAT_CEIL = 57
+    # Round towards -infinity
+    FLOAT_FLOOR = 58
+    # Round towards nearest
+    FLOAT_ROUND = 59
+    # Phi-node operator
+    MULTIEQUAL = 60
+    # Copy with an indirect effect
+    INDIRECT = 61
+    # Concatenate
+    PIECE = 62
+    # Truncate
+    SUBPIECE = 63
+    # Cast from one data-type to another
+    CAST = 64
+    # Index into an array ([])
+    PTRADD = 65
+    # Drill down to a sub-field  (->)
+    PTRSUB = 66
+    # Look-up a \e segmented address
+    SEGMENTOP = 67
+    # Recover a value from the \e constant \e pool
+    CPOOLREF = 68
+    # Allocate a new object (new)
+    NEW = 69
+    # Insert a bit-range
+    INSERT = 70
+    # Extract a bit-range
+    EXTRACT = 71
+    # Count the 1-bits
+    POPCOUNT = 72
+    # Count the leading 0-bits
+    LZCOUNT = 73
+    # Value indicating the end of the op-code values
+    MAX = 74
 
 @dataclass
 class Insn:
-    opcode: int
+    opcode: Opcode
     inputs: List[Vn]
     output: Optional[Vn]
 
     @classmethod
     def from_bindings(cls, bindings_insn: BindingsInsn) -> Self:
-        bindings_opcode = bindings_insn.opcode()
+        opcode = Opcode(bindings_insn.opcode())
 
         inputs_amount = bindings_insn.inVarsAmount()
         inputs = [
@@ -84,7 +232,7 @@ class Insn:
             Vn.from_bindings(bindings_output) if bindings_output is not None else None
         )
 
-        return cls(bindings_opcode, inputs, output)
+        return cls(opcode, inputs, output)
 
 
 @dataclass
