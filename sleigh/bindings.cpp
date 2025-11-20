@@ -36,9 +36,14 @@ class SimpleLoadImage : public LoadImage {
     virtual string getArchType(void) const { return "[simple]"; }
     virtual void adjustVma(long adjust) {}
 
-    virtual py::buffer loadSimple(const Address& addr, int4 amount) = 0;
+    virtual py::buffer loadSimple(uint64_t addr, int4 amount) = 0;
     virtual void loadFill(uint1* ptr, int4 size, const Address& addr) {
-        py::buffer buf = this->loadSimple(addr, size);
+        AddrSpace* space = addr.getSpace();
+        if (space != space->getManager()->getDefaultCodeSpace()) {
+            throw std::runtime_error("attempted to load data from a SimpleLoadImage instance using an address space other than "
+                                     "the default code space");
+        }
+        py::buffer buf = this->loadSimple(addr.getOffset(), size);
         py::buffer_info info = buf.request();
         if (info.size != size) {
             throw std::runtime_error("load simple returned an unexpected number of bytes");
@@ -51,7 +56,7 @@ class PySimpleLoadImage : public SimpleLoadImage, public py::trampoline_self_lif
   public:
     using SimpleLoadImage::SimpleLoadImage;
 
-    virtual py::buffer loadSimple(const Address& addr, int4 amount) {
+    virtual py::buffer loadSimple(uint64_t addr, int4 amount) {
         PYBIND11_OVERRIDE_PURE(py::buffer, SimpleLoadImage, loadSimple, addr, amount);
     }
 };
