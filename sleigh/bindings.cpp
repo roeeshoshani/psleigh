@@ -268,6 +268,10 @@ uint32_t varnodeGetSize(const VarnodeData* v) { return v->size; }
 
 AddrSpace* varnodeGetSpace(const VarnodeData* v) { return v->space; }
 
+int addrSpaceGetType(const AddrSpace* space) {
+    return (int)space->getType();
+}
+
 PYBIND11_MODULE(pysleigh_bindings, m, py::mod_gil_not_used()) {
     sleighBindingsInitGlobals();
 
@@ -301,7 +305,7 @@ PYBIND11_MODULE(pysleigh_bindings, m, py::mod_gil_not_used()) {
     py::class_<AddrSpace, py::smart_holder>(m, "BindingsAddrSpace")
         .def("getName", &AddrSpace::getName, py::return_value_policy::reference_internal)
         .def("getShortcut", &AddrSpace::getShortcut)
-        .def("getType", &AddrSpace::getType)
+        .def("getType", &addrSpaceGetType)
         .def("getWordSize", &AddrSpace::getWordSize)
         .def("getAddrSize", &AddrSpace::getAddrSize);
 

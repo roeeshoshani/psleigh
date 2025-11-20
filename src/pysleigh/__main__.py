@@ -274,6 +274,24 @@ class LiftRes:
         return cls(machine_insn_len, insns)
 
 
+class VnSpaceKind(IntEnum):
+    CONSTANT = 0
+    PROCESSOR = 1
+    SPACEBASE = 2
+    INTERNAL = 3
+    FSPEC = 4
+    IOP = 5
+    JOIN = 6
+
+
+@dataclass
+class VnSpaceInfo:
+    name: str
+    kind: VnSpaceKind
+    word_size: int
+    addr_size: int
+
+
 class Sleigh:
     def __init__(self, sla_relative_path: str):
         sla_path = PROCESSORS_DIR.joinpath(sla_relative_path)
@@ -283,7 +301,21 @@ class Sleigh:
         bindings_lift_res = self.bindings_sleigh.liftOne(addr)
         return LiftRes.from_bindings(bindings_lift_res)
 
+    def default_code_space(self) -> VnSpace:
+        return VnSpace.from_bindings(self.bindings_sleigh.getDefaultCodeSpace())
+
+    def space_info(self, space: VnSpace) -> VnSpaceInfo:
+        bindings_space = self.bindings_sleigh.getSpaceByShortcut(space.shortcut)
+        return VnSpaceInfo(
+            bindings_space.getName(),
+            VnSpaceKind(bindings_space.getType()),
+            bindings_space.getWordSize(),
+            bindings_space.getAddrSize(),
+        )
+
 
 sleigh = Sleigh(SLA_RELATIVE_PATH_X86_64)
 res = sleigh.lift_one(0)
 print(res)
+
+print(sleigh.space_info(sleigh.default_code_space()))
