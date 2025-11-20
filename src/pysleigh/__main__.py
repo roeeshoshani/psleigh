@@ -295,6 +295,9 @@ class VnSpaceInfo:
     def space(self) -> VnSpace:
         return VnSpace(self.shortcut)
 
+@dataclass
+class NoSuchRegErr(Exception):
+    reg_name: str
 
 class Sleigh:
     def __init__(self, sla_relative_path: str):
@@ -318,9 +321,16 @@ class Sleigh:
             bindings_space.getAddrSize(),
         )
 
+    def reg_by_name(self, name: str) -> Vn:
+        bindings_vn: BindingsVarnodeData = self.bindings_sleigh.regByName(name)
+        if bindings_vn is None:
+            raise NoSuchRegErr(name)
+        return Vn.from_bindings(bindings_vn)
+
 
 sleigh = Sleigh(SLA_RELATIVE_PATH_X86_64)
 res = sleigh.lift_one(0)
 print(res)
 
 print(sleigh.space_info(sleigh.default_code_space()))
+print(sleigh.reg_by_name('RSP'))
