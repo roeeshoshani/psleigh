@@ -117,21 +117,22 @@ class BindingsPcodeEmitter : public PcodeEmit {
     }
 };
 
-#define DEFINE_EXCEPTION_WRAPPER(EXCEPTION_NAME)                                                                               \
+#define DEFINE_EXCEPTION_WRAPPER(EXCEPTION_NAME, ...)                                                            \
     class Bindings##EXCEPTION_NAME : public std::runtime_error {                                                               \
       public:                                                                                                                  \
-        Bindings##EXCEPTION_NAME(const EXCEPTION_NAME& inner) : std::runtime_error(inner.explain) {}                           \
+        Bindings##EXCEPTION_NAME(const EXCEPTION_NAME& inner)                                                                  \
+            : std::runtime_error("sleigh" __VA_OPT__(" " __VA_ARGS__) " error: " + inner.explain) {}                                    \
     }
 
 DEFINE_EXCEPTION_WRAPPER(SleighError);
-DEFINE_EXCEPTION_WRAPPER(UnimplError);
-DEFINE_EXCEPTION_WRAPPER(ParseError);
-DEFINE_EXCEPTION_WRAPPER(DataUnavailError);
-DEFINE_EXCEPTION_WRAPPER(BadDataError);
-DEFINE_EXCEPTION_WRAPPER(DecoderError);
-DEFINE_EXCEPTION_WRAPPER(RecovError);
-DEFINE_EXCEPTION_WRAPPER(EvaluationError);
-DEFINE_EXCEPTION_WRAPPER(LowlevelError);
+DEFINE_EXCEPTION_WRAPPER(UnimplError, "unimplemented");
+DEFINE_EXCEPTION_WRAPPER(ParseError, "parse");
+DEFINE_EXCEPTION_WRAPPER(DataUnavailError, "data unavailable");
+DEFINE_EXCEPTION_WRAPPER(BadDataError, "bad data");
+DEFINE_EXCEPTION_WRAPPER(DecoderError, "decoder");
+DEFINE_EXCEPTION_WRAPPER(RecovError, "recoverable");
+DEFINE_EXCEPTION_WRAPPER(EvaluationError, "evaluation");
+DEFINE_EXCEPTION_WRAPPER(LowlevelError, "low level");
 
 class BindingsSleigh {
   public:
@@ -147,7 +148,10 @@ class BindingsSleigh {
     BindingsSleigh(const std::string& sla_file_path, std::unique_ptr<SimpleLoadImage> buf_load_image)
         : m_buf_load_image(std::move(buf_load_image)), m_sleigh(nullptr), m_ctx(), m_insns(), m_all_reg_names() {
 
-#define WRAP_EXCEPTION(EXCEPTION_NAME) catch (const EXCEPTION_NAME& e) { throw Bindings##EXCEPTION_NAME(e); }
+#define WRAP_EXCEPTION(EXCEPTION_NAME)                                                                                         \
+    catch (const EXCEPTION_NAME& e) {                                                                                          \
+        throw Bindings##EXCEPTION_NAME(e);                                                                                     \
+    }
 
         try {
             m_sleigh = std::make_unique<Sleigh>(m_buf_load_image.get(), &m_ctx);
