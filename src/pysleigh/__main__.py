@@ -286,10 +286,14 @@ class VnSpaceKind(IntEnum):
 
 @dataclass
 class VnSpaceInfo:
+    shortcut: str
     name: str
     kind: VnSpaceKind
     word_size: int
     addr_size: int
+
+    def space(self) -> VnSpace:
+        return VnSpace(self.shortcut)
 
 
 class Sleigh:
@@ -307,6 +311,7 @@ class Sleigh:
     def space_info(self, space: VnSpace) -> VnSpaceInfo:
         bindings_space = self.bindings_sleigh.getSpaceByShortcut(space.shortcut)
         return VnSpaceInfo(
+            bindings_space.getShortcut(),
             bindings_space.getName(),
             VnSpaceKind(bindings_space.getType()),
             bindings_space.getWordSize(),
