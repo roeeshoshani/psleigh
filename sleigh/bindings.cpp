@@ -20,6 +20,7 @@
 #include "./src/xml.hh"
 #include "src/interface.hh"
 #include <cstdint>
+#include <sstream>
 #include <stdexcept>
 
 #define STR(X) #X
@@ -117,11 +118,11 @@ class BindingsPcodeEmitter : public PcodeEmit {
     }
 };
 
-#define DEFINE_EXCEPTION_WRAPPER(EXCEPTION_NAME, ...)                                                            \
+#define DEFINE_EXCEPTION_WRAPPER(EXCEPTION_NAME, ...)                                                                          \
     class Bindings##EXCEPTION_NAME : public std::runtime_error {                                                               \
       public:                                                                                                                  \
         Bindings##EXCEPTION_NAME(const EXCEPTION_NAME& inner)                                                                  \
-            : std::runtime_error("sleigh" __VA_OPT__(" " __VA_ARGS__) " error: " + inner.explain) {}                                    \
+            : std::runtime_error("sleigh" __VA_OPT__(" " __VA_ARGS__) " error: " + inner.explain) {}                           \
     }
 
 DEFINE_EXCEPTION_WRAPPER(SleighError);
@@ -156,9 +157,18 @@ class BindingsSleigh {
         try {
             m_sleigh = std::make_unique<Sleigh>(m_buf_load_image.get(), &m_ctx);
 
+            // poor man's xml quoting check
+            if (sla_file_path.find('<') != std::string::npos || sla_file_path.find('>') != std::string::npos) {
+                throw std::invalid_argument(
+                    "the provided sla file path contains a '<' or a '>' character, which is not allowed: " + sla_file_path
+                );
+            }
+
             // decode the sla specification
             DocumentStorage docstorage;
-            Element* sleighroot = docstorage.openDocument(sla_file_path)->getRoot();
+            std::stringstream strstream;
+            strstream << "<sleigh>" << sla_file_path << "</sleigh>";
+            Element* sleighroot = docstorage.parseDocument(strstream)->getRoot();
             docstorage.registerTag(sleighroot);
             m_sleigh->initialize(docstorage);
 
