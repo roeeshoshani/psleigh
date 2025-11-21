@@ -63,7 +63,10 @@ DEFINE_EXCEPTION_WRAPPER(LowlevelError, "low level");
     WRAP_EXCEPTION(EvaluationError)                                                                                            \
     WRAP_EXCEPTION(LowlevelError)
 
-class SymbolIsNotARegisterError : public std::exception {};
+class SymbolIsNotARegisterError : public std::runtime_error{
+  public:
+    SymbolIsNotARegisterError(): std::runtime_error("symbol is not a register") {}
+};
 
 class SimpleLoadImage : public LoadImage {
   public:
@@ -447,14 +450,16 @@ PYBIND11_MODULE(pysleigh_bindings, m, py::mod_gil_not_used()) {
         .def(py::init<>())
         .def("loadSimple", &SimpleLoadImage::loadSimple);
 
-#define DEF_EXCEPTION(EXCEPTION_NAME) py::exception<Bindings##EXCEPTION_NAME>(m, STR(Bindings##EXCEPTION_NAME))
-    DEF_EXCEPTION(SleighError);
-    DEF_EXCEPTION(UnimplError);
-    DEF_EXCEPTION(ParseError);
-    DEF_EXCEPTION(DataUnavailError);
-    DEF_EXCEPTION(BadDataError);
-    DEF_EXCEPTION(DecoderError);
-    DEF_EXCEPTION(RecovError);
-    DEF_EXCEPTION(EvaluationError);
-    DEF_EXCEPTION(LowlevelError);
+#define DEF_EXCEPTION(EXCEPTION_NAME) py::exception<EXCEPTION_NAME>(m, STR(EXCEPTION_NAME))
+#define DEF_BINDINGS_EXCEPTION(EXCEPTION_NAME) DEF_EXCEPTION(Bindings##EXCEPTION_NAME)
+    DEF_BINDINGS_EXCEPTION(SleighError);
+    DEF_BINDINGS_EXCEPTION(UnimplError);
+    DEF_BINDINGS_EXCEPTION(ParseError);
+    DEF_BINDINGS_EXCEPTION(DataUnavailError);
+    DEF_BINDINGS_EXCEPTION(BadDataError);
+    DEF_BINDINGS_EXCEPTION(DecoderError);
+    DEF_BINDINGS_EXCEPTION(RecovError);
+    DEF_BINDINGS_EXCEPTION(EvaluationError);
+    DEF_BINDINGS_EXCEPTION(LowlevelError);
+    DEF_EXCEPTION(SymbolIsNotARegisterError);
 }

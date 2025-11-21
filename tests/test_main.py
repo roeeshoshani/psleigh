@@ -99,7 +99,7 @@ def test_reader_error():
 
     sleigh = Sleigh(SleighArch.x86_64(), TestReaderErr())
 
-    # Verify the exception propagates
+    # verify the exception propagates
     with pytest.raises(RuntimeError, match=ERR_MSG):
         sleigh.lift_one(0)
 
@@ -288,9 +288,7 @@ def test_reg_by_name_nonexistent():
 def test_reg_by_name_symbol_not_a_reg():
     sleigh = Sleigh(SleighArch.mips32be(), EmptyMemReader())
 
-    # In the python bindings provided, `reg_by_name` raises NoSuchRegErr
-    # if the underlying binding returns None.
-    with pytest.raises(NoSuchRegErr):
+    with pytest.raises(RuntimeError, match="symbol is not a register"):
         sleigh.reg_by_name("LowBitCodeMode")
 
 
