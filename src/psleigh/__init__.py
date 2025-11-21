@@ -92,11 +92,32 @@ class VnSpace:
     def from_bindings(cls, bindings_addr_space: BindingsAddrSpace) -> Self:
         return cls(bindings_addr_space.getShortcut())
 
+    def __str__(self) -> str:
+        return self.shortcut
+
+    def info(self, sleigh: Sleigh) -> VnSpaceInfo:
+        return sleigh.space_info(self)
+
+    def fmt(self, sleigh: Sleigh) -> str:
+        return self.info(sleigh).name
+
 
 @dataclass
 class VnAddr:
     off: int
     space: VnSpace
+
+    def __str__(self) -> str:
+        if self.space == VnSpace.const():
+            return hex(self.off)
+
+        return f"{self.space}[{self.off}]"
+
+    def fmt(self, sleigh: Sleigh) -> str:
+        if self.space == VnSpace.const():
+            return hex(self.off)
+
+        return f"{self.space.fmt(sleigh)}[{self.off}]"
 
 
 @dataclass
@@ -110,6 +131,16 @@ class Vn:
             bindings_vn.getOffset(), VnSpace.from_bindings(bindings_vn.getSpace())
         )
         return cls(addr, bindings_vn.getSize())
+
+    def __str__(self) -> str:
+        return f"{self.addr}:{self.size}"
+
+    def fmt(self, sleigh: Sleigh) -> str:
+        name = sleigh.reg_to_name(self)
+        if name is not None:
+            return name
+
+        return f"{self.addr.fmt(sleigh)}:{self.size}"
 
 
 class Opcode(IntEnum):
@@ -260,6 +291,12 @@ class Opcode(IntEnum):
     # Value indicating the end of the op-code values
     MAX = 74
 
+    def __str__(self) -> str:
+        return self.name
+
+    def __repr__(self) -> str:
+        return self.name
+
 
 @dataclass
 class Insn:
@@ -283,6 +320,20 @@ class Insn:
 
         return cls(opcode, inputs, output)
 
+    def all_vns(self) -> List[Vn]:
+        if self.output is not None:
+            return [self.output] + self.inputs
+        else:
+            return self.inputs.copy()
+
+    def __str__(self) -> str:
+        all_vns = self.all_vns()
+        return str(self.opcode) + " " + ", ".join(str(vn) for vn in all_vns)
+
+    def fmt(self, sleigh: Sleigh) -> str:
+        all_vns = self.all_vns()
+        return str(self.opcode) + " " + ", ".join(vn.fmt(sleigh) for vn in all_vns)
+
 
 @dataclass
 class LiftRes:
@@ -299,6 +350,9 @@ class LiftRes:
         ]
 
         return cls(machine_insn_len, insns)
+
+    def fmt_insns(self, sleigh: Sleigh) -> str:
+        return "\n".join(insn.fmt(sleigh) for insn in self.insns)
 
 
 class VnSpaceKind(IntEnum):
@@ -362,10 +416,12 @@ class SleighArch:
             "MIPS/data/languages/mips32be.sla", "MIPS/data/languages/mips32.pspec"
         )
 
+
 @dataclass
 class PartiallyInitializedInsnErr(Exception):
     addr: int
     content: bytes
+
 
 class Sleigh:
     arch: SleighArch
