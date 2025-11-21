@@ -37,6 +37,13 @@ class MemReaderDataUnavailErr(Exception):
     addr: int
     amount: int
 
+@dataclass
+class EmptyMemReader(MemReader):
+    def __init__(self):
+        super().__init__()
+
+    def read(self, addr: int, amount: int) -> bytes:
+        raise MemReaderDataUnavailErr(addr, amount)
 
 @dataclass
 class BufMemReader(MemReader):
