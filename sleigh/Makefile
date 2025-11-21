@@ -17,7 +17,7 @@ COPIED_PROCESSORS_DIR_MARKER := $(DIST_PROCESSORS_DIR)/.marker
 SLASPEC_FILES := $(shell find processors/ -name "*.slaspec")
 SLA_FILES := $(SLASPEC_FILES:processors/%.slaspec=$(DIST_PROCESSORS_DIR)/%.sla)
 
-CXX := clang++
+CXX := g++
 
 CXXFLAGS :=
 LDFLAGS :=
@@ -35,8 +35,7 @@ CXXFLAGS += -O3
 CXXFLAGS += -fPIC
 
 # enable lto
-CXXFLAGS += -flto=thin -ffat-lto-objects
-LDFLAGS += -fuse-ld=lld
+CXXFLAGS += -flto
 
 YACC := bison
 
