@@ -342,7 +342,7 @@ class BindingsSleigh {
 
 void sleighBindingsInitGlobals() {
     try {
-        static std::atomic<bool> initialized = false;
+        static std::atomic<bool> initialized{false};
         if (!initialized.exchange(true)) {
             AttributeId::initialize();
             ElementId::initialize();
