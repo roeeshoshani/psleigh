@@ -19,6 +19,7 @@
 #include "./src/translate.hh"
 #include "./src/types.h"
 #include "./src/xml.hh"
+#include "src/architecture.hh"
 #include "src/interface.hh"
 #include <cstdint>
 #include <sstream>
@@ -226,21 +227,26 @@ class BindingsSleigh {
             }
 
             // decode the sla specification
-            DocumentStorage slaspecDocStorage;
             std::stringstream slaspecStrStream;
             slaspecStrStream << "<sleigh>" << sla_file_path << "</sleigh>";
-            Element* sleighroot = slaspecDocStorage.parseDocument(slaspecStrStream)->getRoot();
-            slaspecDocStorage.registerTag(sleighroot);
+            DocumentStorage slaspecDocStorage;
+            Element* sleighRoot = slaspecDocStorage.parseDocument(slaspecStrStream)->getRoot();
+            slaspecDocStorage.registerTag(sleighRoot);
             m_sleigh->initialize(slaspecDocStorage);
 
             // decode processor specification (pspec)
             DocumentStorage pspecDocStorage;
-            pspecDocStorage.openDocument(pspec_file_path);
-            const Element* el = pspecDocStorage.getTag("processor_spec");
-            if (el == (const Element*)0)
+            Element* pspecRoot = pspecDocStorage.openDocument(pspec_file_path)->getRoot();
+            pspecDocStorage.registerTag(pspecRoot);
+            const Element* pspecElem = pspecDocStorage.getTag("processor_spec");
+            if (pspecElem == (const Element*)0)
                 throw LowlevelError("No processor configuration tag found");
-            XmlDecode pspecDecoder((AddrSpaceManager*)&*m_sleigh, el);
-            m_ctx.decodeFromSpec(pspecDecoder);
+            for (Element* curElem : pspecElem->getChildren()) {
+                if (curElem->getName() == "context_data") {
+                    XmlDecode pspecDecoder((AddrSpaceManager*)&*m_sleigh, curElem);
+                    m_ctx.decodeFromSpec(pspecDecoder);
+                }
+            }
 
             // collect all register names
             map<VarnodeData, string> tmp_all_regs;
@@ -403,7 +409,7 @@ PYBIND11_MODULE(pysleigh_bindings, m, py::mod_gil_not_used()) {
     sleighBindingsInitGlobals();
 
     py::class_<BindingsSleigh, py::smart_holder>(m, "BindingsSleigh")
-        .def(py::init<const std::string&, std::unique_ptr<SimpleLoadImage>>())
+        .def(py::init<const std::string&, const std::string&, std::unique_ptr<SimpleLoadImage>>())
         .def("liftOne", &BindingsSleigh::liftOne)
         .def("setVarDefault", &BindingsSleigh::setVarDefault)
         .def("getDefaultCodeSpace", &BindingsSleigh::getDefaultCodeSpace, py::return_value_policy::reference_internal)

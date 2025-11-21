@@ -35,6 +35,7 @@ class MyLoadImage(MemReader):
 
 
 SLA_RELATIVE_PATH_X86_64 = "x86/data/languages/x86-64.sla"
+PSPEC_RELATIVE_PATH_X86_64 = "x86/data/languages/x86-64.pspec"
 
 
 @dataclass
@@ -315,7 +316,7 @@ class Sleigh:
         pspec_path = PROCESSORS_DIR.joinpath(pspec_relative_path)
 
         self.bindings_sleigh: BindingsSleigh = BindingsSleigh(
-            str(sla_path), MyLoadImage()
+            str(sla_path), str(pspec_path), MyLoadImage()
         )
 
         self.all_reg_names: List[str] = self._fetch_all_reg_names_from_bindings()
@@ -346,9 +347,13 @@ class Sleigh:
     def reg_to_name(self, reg: Vn) -> Optional[str]:
         all_regs_amount = self.bindings_sleigh.allRegNamesAmount()
 
-        bindings_space = self.bindings_sleigh.getSpaceByShortcut(reg.addr.space.shortcut)
+        bindings_space = self.bindings_sleigh.getSpaceByShortcut(
+            reg.addr.space.shortcut
+        )
 
-        name_index = self.bindings_sleigh.regNameToIndex(bindings_space, reg.addr.off, reg.size)
+        name_index = self.bindings_sleigh.regNameToIndex(
+            bindings_space, reg.addr.off, reg.size
+        )
 
         # the bindings returns the regs amount to indicate that the provided varnode is not a named register
         if name_index == all_regs_amount:
@@ -359,11 +364,12 @@ class Sleigh:
     def _fetch_all_reg_names_from_bindings(self) -> List[str]:
         all_regs_amount = self.bindings_sleigh.allRegNamesAmount()
         return [
-            self.bindings_sleigh.allRegNamesGetByIndex(i) for i in range(all_regs_amount)
+            self.bindings_sleigh.allRegNamesGetByIndex(i)
+            for i in range(all_regs_amount)
         ]
 
 
-sleigh = Sleigh(SLA_RELATIVE_PATH_X86_64)
+sleigh = Sleigh(SLA_RELATIVE_PATH_X86_64, PSPEC_RELATIVE_PATH_X86_64)
 res = sleigh.lift_one(0)
 print(res)
 
