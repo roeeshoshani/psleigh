@@ -30,6 +30,4 @@ dev = [
 
 [tool.cibuildwheel.linux]
 before-all = "yum install -y make gcc-c++"
-
-[tool.cibuildwheel.linux]
 archs = ["auto64"]
