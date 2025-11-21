@@ -83,10 +83,11 @@ class SimpleLoadImage : public LoadImage {
             }
             py::buffer buf = this->loadSimple(addr.getOffset(), size);
             py::buffer_info info = buf.request();
-            if (info.size != size) {
+            if (info.size > size) {
                 throw std::runtime_error("load simple returned an unexpected number of bytes");
             }
-            memcpy(ptr, info.ptr, size);
+            memcpy(ptr, info.ptr, info.size);
+            memset(ptr + info.size, 0, size - info.size);
         }
         WRAP_EXCEPTIONS()
     }

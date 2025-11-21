@@ -51,9 +51,8 @@ class BufMemReader(MemReader):
 
     def read(self, addr: int, amount: int) -> bytes:
         offset = addr - self.buf_addr
-        if offset < 0 or offset + amount > len(self.buf):
-            raise MemReaderDataUnavailErr(addr, amount)
-        return self.buf[offset : offset + amount]
+        end_offset = min(offset + amount, len(self.buf))
+        return self.buf[offset:end_offset]
 
 
 @dataclass
