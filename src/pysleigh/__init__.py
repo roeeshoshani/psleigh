@@ -37,6 +37,7 @@ class MemReaderDataUnavailErr(Exception):
     addr: int
     amount: int
 
+
 @dataclass
 class EmptyMemReader(MemReader):
     def __init__(self):
@@ -44,6 +45,7 @@ class EmptyMemReader(MemReader):
 
     def read(self, addr: int, amount: int) -> bytes:
         raise MemReaderDataUnavailErr(addr, amount)
+
 
 @dataclass
 class BufMemReader(MemReader):
@@ -360,6 +362,10 @@ class SleighArch:
             "MIPS/data/languages/mips32be.sla", "MIPS/data/languages/mips32.pspec"
         )
 
+@dataclass
+class PartiallyInitializedInsnErr(Exception):
+    addr: int
+    content: bytes
 
 class Sleigh:
     arch: SleighArch
@@ -375,8 +381,34 @@ class Sleigh:
         )
         self.all_reg_names = self._fetch_all_reg_names_from_bindings()
 
+    def verify_insn_bytes_initialized(self, addr: int, machine_insn_len: int):
+        content = self.mem_reader.read(addr, machine_insn_len)
+
+        # sanity
+        assert len(content) <= machine_insn_len
+
+        if len(content) < machine_insn_len:
+            raise PartiallyInitializedInsnErr(addr, content)
+
     def lift_one(self, addr: int) -> LiftRes:
         bindings_lift_res = self.bindings_sleigh.liftOne(addr)
+
+        # at this point we have successfully decoded the instruction, but i am adding an extra check here
+        # to make sure that all of the instructions bytes are properly initialized.
+        #
+        # sleigh has a design problem where its "read memory" abstraction can only either return all of the
+        # requested bytes, or fail entirely, but it can't return only a partial amount of bytes.
+        #
+        # when only part of the bytes are available, our ffi wrapper function just fills the rest of the buffer
+        # with zeroes. this means that if we have a buffer with only the first few bytes of an instruction,
+        # but not all, then the rest of the bytes will be treated as zeroes and the instruction will decode
+        # successfully instead of returning an error.
+        #
+        # to fix this problem, we add a check here to make sure that all of the bytes that are reported by
+        # sleigh to be used by the instruction are actually properly initialized.
+        machine_insn_len = bindings_lift_res.machineInsnLen()
+        self.verify_insn_bytes_initialized(addr, machine_insn_len)
+
         return LiftRes.from_bindings(bindings_lift_res)
 
     def default_code_space(self) -> VnSpace:
