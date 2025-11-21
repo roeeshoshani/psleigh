@@ -40,7 +40,7 @@ CXXFLAGS += -flto
 YACC := bison
 
 .phony: all
-all: $(DIST_DIR)/pysleigh_bindings.so $(SLA_FILES)
+all: $(DIST_DIR)/psleigh_bindings.so $(SLA_FILES)
 
 $(COPIED_PROCESSORS_DIR_MARKER):
 	rm -rf $(DIST_PROCESSORS_DIR)/*
@@ -52,7 +52,7 @@ $(DIST_PROCESSORS_DIR)/%.sla: processors/%.slaspec $(SLGH_COMPILE_BIN) $(COPIED_
 	@mkdir -p $(@D)
 	$(SLGH_COMPILE_BIN) $< $@
 
-$(DIST_DIR)/pysleigh_bindings.so: $(LIB_OBJS) $(BUILD_DIR)/bindings.o
+$(DIST_DIR)/psleigh_bindings.so: $(LIB_OBJS) $(BUILD_DIR)/bindings.o
 	@mkdir -p $(@D)
 	$(CXX) -shared $(CXXFLAGS) $^ $(LDFLAGS) -o $@
 

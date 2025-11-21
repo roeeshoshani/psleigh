@@ -1,5 +1,5 @@
 import pytest
-from pysleigh import (
+from psleigh import (
     BufMemReader,
     EmptyMemReader,
     Insn,

@@ -1,5 +1,5 @@
 from __future__ import annotations
-from .pysleigh_bindings import (
+from .psleigh_bindings import (
     BindingsSleigh,
     BindingsSimpleLoadImage,
     BindingsLiftRes,

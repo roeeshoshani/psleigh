@@ -1,5 +1,5 @@
 [project]
-name = "pysleigh"
+name = "psleigh"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
@@ -12,11 +12,11 @@ dependencies = [
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/pysleigh"]
+packages = ["src/psleigh"]
 
 [[tool.hatch.build.hooks.build-scripts.scripts]]
 work_dir = "."
-commands = ["make -C sleigh -j$(nproc) && cp -r sleigh/build/dist/* src/pysleigh/"]
+commands = ["make -C sleigh -j$(nproc) && cp -r sleigh/build/dist/* src/psleigh/"]
 artifacts = []
 
 [build-system]

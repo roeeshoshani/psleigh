@@ -409,7 +409,7 @@ char addrSpaceGetShortcut(const AddrSpace* space) {
     WRAP_EXCEPTIONS()
 }
 
-PYBIND11_MODULE(pysleigh_bindings, m, py::mod_gil_not_used()) {
+PYBIND11_MODULE(psleigh_bindings, m, py::mod_gil_not_used()) {
     sleighBindingsInitGlobals();
 
     py::class_<BindingsSleigh, py::smart_holder>(m, "BindingsSleigh")
