@@ -1,7 +1,7 @@
 [project]
 name = "psleigh"
 version = "0.1.0"
-description = "Add your description here"
+description = "python bindings for ghidra's sleigh engine"
 readme = "README.md"
 authors = [
     { name = "Roee Shoshani", email = "roysho10@gmail.com" }
