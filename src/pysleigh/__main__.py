@@ -34,10 +34,6 @@ class MyLoadImage(MemReader):
         return b"\x00" * amount
 
 
-SLA_RELATIVE_PATH_X86_64 = "x86/data/languages/x86-64.sla"
-PSPEC_RELATIVE_PATH_X86_64 = "x86/data/languages/x86-64.pspec"
-
-
 @dataclass
 class VnSpace:
     shortcut: str
@@ -302,24 +298,52 @@ class NoSuchRegErr(Exception):
     reg_name: str
 
 
-class Sleigh:
+@dataclass
+class SleighArch:
+    # the path of the sla file relative to the processors directory
     sla_relative_path: str
+
+    # the path of the pspec file relative to the processors directory
     pspec_relative_path: str
+
+    def sla_abs_path(self) -> str:
+        return str(PROCESSORS_DIR.joinpath(self.sla_relative_path))
+
+    def pspec_abs_path(self) -> str:
+        return str(PROCESSORS_DIR.joinpath(self.pspec_relative_path))
+
+    @classmethod
+    def x86_64(cls) -> Self:
+        return cls("x86/data/languages/x86-64.sla", "x86/data/languages/x86-64.pspec")
+
+    @classmethod
+    def x86(cls) -> Self:
+        return cls("x86/data/languages/x86.sla", "x86/data/languages/x86.pspec")
+
+    @classmethod
+    def mips32le(cls) -> Self:
+        return cls(
+            "MIPS/data/languages/mips32le.sla", "x86/data/languages/mips32.pspec"
+        )
+
+    @classmethod
+    def mips32be(cls) -> Self:
+        return cls(
+            "MIPS/data/languages/mips32be.sla", "x86/data/languages/mips32.pspec"
+        )
+
+
+class Sleigh:
+    arch: SleighArch
     bindings_sleigh: BindingsSleigh
     all_reg_names: List[str]
 
-    def __init__(self, sla_relative_path: str, pspec_relative_path: str):
-        self.sla_relative_path = sla_relative_path
-        self.pspec_relative_path = pspec_relative_path
-
-        sla_path = PROCESSORS_DIR.joinpath(sla_relative_path)
-        pspec_path = PROCESSORS_DIR.joinpath(pspec_relative_path)
-
-        self.bindings_sleigh: BindingsSleigh = BindingsSleigh(
-            str(sla_path), str(pspec_path), MyLoadImage()
+    def __init__(self, arch: SleighArch):
+        self.arch = arch
+        self.bindings_sleigh = BindingsSleigh(
+            arch.sla_abs_path(), arch.pspec_abs_path(), MyLoadImage()
         )
-
-        self.all_reg_names: List[str] = self._fetch_all_reg_names_from_bindings()
+        self.all_reg_names = self._fetch_all_reg_names_from_bindings()
 
     def lift_one(self, addr: int) -> LiftRes:
         bindings_lift_res = self.bindings_sleigh.liftOne(addr)
@@ -369,7 +393,7 @@ class Sleigh:
         ]
 
 
-sleigh = Sleigh(SLA_RELATIVE_PATH_X86_64, PSPEC_RELATIVE_PATH_X86_64)
+sleigh = Sleigh(SleighArch.x86_64())
 res = sleigh.lift_one(0)
 print(res)
 
