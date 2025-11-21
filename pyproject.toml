@@ -33,7 +33,6 @@ dev = [
 ]
 
 [tool.cibuildwheel.linux]
-before-all = "yum install -y make gcc-c++"
 archs = ["auto64"]
 
 [tool.hatch.build.targets.wheel.hooks.custom]
