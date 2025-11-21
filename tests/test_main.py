@@ -5,15 +5,14 @@ from pysleigh import (
     Insn,
     LiftRes,
     MemReader,
-    MemReaderDataUnavailErr,
     NoSuchRegErr,
     Opcode,
+    PartiallyInitializedInsnErr,
     Sleigh,
     SleighArch,
     Vn,
     VnAddr,
     VnSpace,
-    VnSpaceInfo,
     VnSpaceKind,
 )
 
@@ -48,7 +47,10 @@ def test_mips_partial_insn():
     reader = create_mem_reader("24 02 00")
     sleigh = Sleigh(SleighArch.mips32be(), reader)
 
-    with pytest.raises(Exception):
+    with pytest.raises(
+        PartiallyInitializedInsnErr,
+        check=lambda e: e.addr == 0 and e.content == bytes.fromhex("24 02 00"),
+    ):
         sleigh.lift_one(0)
 
 
@@ -109,7 +111,9 @@ def test_reader_no_data():
 
     sleigh = Sleigh(SleighArch.x86_64(), TestReaderNoData())
 
-    with pytest.raises(Exception):
+    with pytest.raises(
+        PartiallyInitializedInsnErr, check=lambda e: e.addr == 0 and e.content == b""
+    ):
         sleigh.lift_one(0)
 
 
@@ -386,4 +390,3 @@ def test_reg_to_name_unnamed_reg():
     ah_plus_one = Vn(VnAddr(ah.addr.off + 1, ah.addr.space), ah.size)
 
     assert sleigh.reg_to_name(ah_plus_one) is None
-
