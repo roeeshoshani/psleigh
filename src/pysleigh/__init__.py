@@ -21,6 +21,9 @@ class MemReaderMeta(type(BindingsSimpleLoadImage), ABCMeta):
 
 
 class MemReader(ABC, BindingsSimpleLoadImage, metaclass=MemReaderMeta):
+    def __init__(self):
+        super().__init__()
+
     @abstractmethod
     def read(self, addr: int, amount: int) -> bytes:
         pass
@@ -29,9 +32,28 @@ class MemReader(ABC, BindingsSimpleLoadImage, metaclass=MemReaderMeta):
         return self.read(addr, amount)
 
 
-class MyLoadImage(MemReader):
+@dataclass
+class MemReaderDataUnavailErr(Exception):
+    addr: int
+    amount: int
+
+
+@dataclass
+class BufMemReader(MemReader):
+    buf: bytes
+    buf_addr: int
+
+    def __post_init__(self):
+        super().__init__()
+
+    def buf_end_addr(self) -> int:
+        return self.buf_addr + len(self.buf)
+
     def read(self, addr: int, amount: int) -> bytes:
-        return b"\x00" * amount
+        offset = addr - self.buf_addr
+        if offset < 0 or offset + amount > len(self.buf):
+            raise MemReaderDataUnavailErr(addr, amount)
+        return self.buf[offset : offset + amount]
 
 
 @dataclass
@@ -323,25 +345,27 @@ class SleighArch:
     @classmethod
     def mips32le(cls) -> Self:
         return cls(
-            "MIPS/data/languages/mips32le.sla", "x86/data/languages/mips32.pspec"
+            "MIPS/data/languages/mips32le.sla", "MIPS/data/languages/mips32.pspec"
         )
 
     @classmethod
     def mips32be(cls) -> Self:
         return cls(
-            "MIPS/data/languages/mips32be.sla", "x86/data/languages/mips32.pspec"
+            "MIPS/data/languages/mips32be.sla", "MIPS/data/languages/mips32.pspec"
         )
 
 
 class Sleigh:
     arch: SleighArch
+    mem_reader: MemReader
     bindings_sleigh: BindingsSleigh
     all_reg_names: List[str]
 
-    def __init__(self, arch: SleighArch):
+    def __init__(self, arch: SleighArch, mem_reader: MemReader):
         self.arch = arch
+        self.mem_reader = mem_reader
         self.bindings_sleigh = BindingsSleigh(
-            arch.sla_abs_path(), arch.pspec_abs_path(), MyLoadImage()
+            arch.sla_abs_path(), arch.pspec_abs_path(), mem_reader
         )
         self.all_reg_names = self._fetch_all_reg_names_from_bindings()
 

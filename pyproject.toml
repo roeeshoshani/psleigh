@@ -24,3 +24,8 @@ artifacts = []
 [build-system]
 requires = ["hatchling", "hatch-build-scripts"]
 build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.1",
+]
