@@ -11,10 +11,8 @@ dependencies = [
     "pybind11>=3.0.1",
 ]
 
-[tool.hatch.build.targets.sdist]
-exclude = [
-    "sleigh",
-]
+[tool.hatch.build.targets.wheel]
+packages = ["src/pysleigh"]
 
 [[tool.hatch.build.hooks.build-scripts.scripts]]
 work_dir = "."
