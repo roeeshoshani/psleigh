@@ -20,7 +20,11 @@ commands = ["make -C sleigh -j$(nproc) && cp -r sleigh/build/dist/* src/psleigh/
 artifacts = []
 
 [build-system]
-requires = ["hatchling", "hatch-build-scripts"]
+requires = [
+    "hatchling",
+    "hatch-build-scripts",
+    "pybind11>=3.0.1",
+]
 build-backend = "hatchling.build"
 
 [dependency-groups]

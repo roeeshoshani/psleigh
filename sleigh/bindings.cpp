@@ -1,4 +1,3 @@
-#include <exception>
 #include <iostream>
 #include <memory>
 #include <ostream>
@@ -19,7 +18,6 @@
 #include "./src/translate.hh"
 #include "./src/types.h"
 #include "./src/xml.hh"
-#include "src/architecture.hh"
 #include "src/interface.hh"
 #include <cstdint>
 #include <sstream>

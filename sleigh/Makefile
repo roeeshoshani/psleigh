@@ -22,7 +22,7 @@ CXX := g++
 CXXFLAGS :=
 LDFLAGS :=
 
-CXXFLAGS += $(shell python3-config --cflags)
+CXXFLAGS += $(shell python3 -m pybind11 --includes)
 
 # ghidra's code is cooked as hell...
 CXXFLAGS += -Wno-sign-compare -Wno-mismatched-tags -Wno-unused-but-set-variable
