@@ -367,10 +367,20 @@ class VnSpaceKind(IntEnum):
 
 @dataclass
 class VnSpaceInfo:
+    """
+    extended information about a varnode address space.
+    """
+
     shortcut: str
     name: str
     kind: VnSpaceKind
+
+    # the size, in bytes, of a single word in this address space.
+    # a word is the smallest addressable unit of memory.
+    # this will usually be 1, indicating that the smallest addressable unit of memory in the address space is a single byte.
     word_size: int
+
+    # specifies the number of bytes needed to address any byte within the space. for example, a 32-bit address space has size 4.
     addr_size: int
 
     def space(self) -> VnSpace:
