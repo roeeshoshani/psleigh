@@ -16,7 +16,7 @@ from enum import IntEnum
 PROCESSORS_DIR = Path(__file__).parent.joinpath("processors")
 
 
-@dataclass
+@dataclass(frozen=True)
 class MemReadReq:
     """
     a request to read memory from a memory reader.
@@ -87,7 +87,7 @@ class MemReader(ABC, BindingsSimpleLoadImage, metaclass=MemReaderMeta):
         return res
 
 
-@dataclass
+@dataclass(frozen=True)
 class MemReaderDataUnavailErr(Exception):
     """
     an error indicating that the memory reader doesn't have any bytes available at the requested address.
@@ -95,9 +95,9 @@ class MemReaderDataUnavailErr(Exception):
     req: MemReadReq
 
 
-@dataclass
+@dataclass(frozen=True)
 class EmptyMemReader(MemReader):
-    def __init__(self):
+    def __post_init__(self):
         super().__init__()
 
     def read(self, req: MemReadReq) -> bytes:
@@ -121,7 +121,7 @@ class BufMemReader(MemReader):
         return self.buf[offset:end_offset]
 
 
-@dataclass
+@dataclass(frozen=True)
 class VnSpace:
     shortcut: str
 
@@ -159,7 +159,7 @@ class VnSpace:
         return self.info(sleigh).name
 
 
-@dataclass
+@dataclass(frozen=True)
 class VnAddr:
     off: int
     space: VnSpace
@@ -177,7 +177,7 @@ class VnAddr:
         return f"{self.space.fmt(sleigh)}[{self.off}]"
 
 
-@dataclass
+@dataclass(frozen=True)
 class Vn:
     addr: VnAddr
     size: int
@@ -355,7 +355,7 @@ class Opcode(IntEnum):
         return self.name
 
 
-@dataclass
+@dataclass(frozen=True)
 class Insn:
     opcode: Opcode
     inputs: List[Vn]
@@ -392,7 +392,7 @@ class Insn:
         return str(self.opcode) + " " + ", ".join(vn.fmt(sleigh) for vn in all_vns)
 
 
-@dataclass
+@dataclass(frozen=True)
 class LiftRes:
     machine_insn_len: int
     insns: List[Insn]
@@ -422,7 +422,7 @@ class VnSpaceKind(IntEnum):
     JOIN = 6
 
 
-@dataclass
+@dataclass(frozen=True)
 class VnSpaceInfo:
     """
     extended information about a varnode address space.
@@ -444,12 +444,12 @@ class VnSpaceInfo:
         return VnSpace(self.shortcut)
 
 
-@dataclass
+@dataclass(frozen=True)
 class NoSuchRegErr(Exception):
     reg_name: str
 
 
-@dataclass
+@dataclass(frozen=True)
 class SleighArch:
     # the path of the sla file relative to the processors directory
     sla_relative_path: str
@@ -484,7 +484,7 @@ class SleighArch:
         )
 
 
-@dataclass
+@dataclass(frozen=True)
 class PartiallyInitializedInsnErr(Exception):
     addr: int
     content: bytes
