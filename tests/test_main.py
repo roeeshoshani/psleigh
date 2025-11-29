@@ -381,3 +381,20 @@ def test_reg_to_name_unnamed_reg():
     ah_plus_one = Vn(VnAddr(ah.addr.off + 1, ah.addr.space), ah.size)
 
     assert sleigh.reg_to_name(ah_plus_one) is None
+
+
+def test_decode_space_from_vn():
+    # mov rax, [rbx]
+    reader = create_mem_reader("48 8b 03")
+    sleigh = Sleigh(SleighArch.x86_64(), reader)
+    res = sleigh.lift_one(0)
+
+    assert res.machine_insn_len == 3
+
+    # there should be a single load insn, find it
+    load_insns = [insn for insn in res.insns if insn.opcode == Opcode.LOAD]
+    assert len(load_insns) == 1
+    load_insn = load_insns[0]
+
+    space = sleigh.decode_space_from_vn(load_insn.inputs[0])
+    assert space == VnSpace.ram()
