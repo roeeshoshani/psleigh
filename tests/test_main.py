@@ -4,7 +4,9 @@ from psleigh import (
     EmptyMemReader,
     Insn,
     LiftRes,
+    MemReadReq,
     MemReader,
+    MemReaderDataUnavailErr,
     NoSuchRegErr,
     Opcode,
     PartiallyInitializedInsnErr,
@@ -44,13 +46,18 @@ def test_basic_mips():
 def test_mips_partial_insn():
     # li $v0, 1
     # should be 24 02 00 01
-    # removed the last byte
+    # intentionally removed the last byte
     reader = create_mem_reader("24 02 00")
     sleigh = Sleigh(SleighArch.mips32be(), reader)
 
     with pytest.raises(
         PartiallyInitializedInsnErr,
-        check=lambda e: e.addr == 0 and e.content == bytes.fromhex("24 02 00"),
+        check=lambda e: (
+            e
+            == PartiallyInitializedInsnErr(
+                addr=0, content=bytes.fromhex("24 02 00"), desired_len=4
+            )
+        ),
     ):
         sleigh.lift_one(0)
 
@@ -95,7 +102,7 @@ def test_reader_error():
     ERR_MSG = "test reader error"
 
     class TestReaderErr(MemReader):
-        def read(self, addr: int, amount: int) -> bytes:
+        def read(self, req: MemReadReq) -> bytes:
             raise RuntimeError(ERR_MSG)
 
     sleigh = Sleigh(SleighArch.x86_64(), TestReaderErr())
@@ -107,14 +114,12 @@ def test_reader_error():
 
 def test_reader_no_data():
     class TestReaderNoData(MemReader):
-        def read(self, addr: int, amount: int) -> bytes:
+        def read(self, req: MemReadReq) -> bytes:
             return b""
 
     sleigh = Sleigh(SleighArch.x86_64(), TestReaderNoData())
 
-    with pytest.raises(
-        PartiallyInitializedInsnErr, check=lambda e: e.addr == 0 and e.content == b""
-    ):
+    with pytest.raises(MemReaderDataUnavailErr):
         sleigh.lift_one(0)
 
 

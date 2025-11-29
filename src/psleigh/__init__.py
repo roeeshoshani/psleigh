@@ -16,26 +16,83 @@ from enum import IntEnum
 PROCESSORS_DIR = Path(__file__).parent.joinpath("processors")
 
 
+@dataclass
+class MemReadReq:
+    """
+    a request to read memory from a memory reader.
+    """
+
+    # the address to read from
+    addr: int
+
+    # the maximum amount of contiguous bytes to read
+    amount: int
+
+
 class MemReaderMeta(type(BindingsSimpleLoadImage), ABCMeta):
+    """
+    a meta class which combines the pybind metaclass and the ABC metaclass so that we can create a class which inherits from
+    both a pybind base class and the ABC base class.
+    """
     pass
 
 
 class MemReader(ABC, BindingsSimpleLoadImage, metaclass=MemReaderMeta):
+    """
+    a memory reader.
+
+    this represents an abstraction over a memory map. it is used by the sleigh lifter to read the machine code bytes.
+
+    the core (and only) abstract function of this base class is the `read` function.
+    it takes in an address and an amount of bytes, and returns the value of these bytes in memory.
+
+    this can represent many things, ranging from a simple buffer of contiguous memory, to a memory map which represents the data
+    in an ELF file's section and program headers.
+    """
+
     def __init__(self):
         super().__init__()
 
     @abstractmethod
-    def read(self, addr: int, amount: int) -> bytes:
+    def read(self, req: MemReadReq) -> bytes:
+        """
+        read up to `req.amount` contiguous bytes from memory at address `req.addr`.
+
+        if there is less than `req.amount` bytes of valid memory at address `req.addr`, this function should return as many bytes
+        as possible, as long as they are contiguous.
+
+        this is important since the sleigh engine will often issue reads of predefined sizes (e.g 16 bytes) even if instructions are
+        smaller, and may thus try to read more bytes than are actually available.
+
+        in such cases, we still want to return as many bytes as possible to the engine to properly decode the instructions, even if we
+        don't have the requested amount of bytes.
+        """
         pass
 
     def loadSimple(self, addr: int, amount: int) -> bytes:
-        return self.read(addr, amount)
+        """
+        this is the actual FFI function that we are overriding in the `BindingsSimpleLoadImage` class, and this is what will be called
+        by the sleigh engine.
+
+        this function is just a thin wrapper for the `read` function.
+        """
+        req = MemReadReq(addr, amount)
+
+        res = self.read(req)
+
+        # if there are no bytes available, raise a corresponding exception.
+        if len(res) == 0:
+            raise MemReaderDataUnavailErr(req)
+
+        return res
 
 
 @dataclass
 class MemReaderDataUnavailErr(Exception):
-    addr: int
-    amount: int
+    """
+    an error indicating that the memory reader doesn't have any bytes available at the requested address.
+    """
+    req: MemReadReq
 
 
 @dataclass
@@ -43,8 +100,8 @@ class EmptyMemReader(MemReader):
     def __init__(self):
         super().__init__()
 
-    def read(self, addr: int, amount: int) -> bytes:
-        raise MemReaderDataUnavailErr(addr, amount)
+    def read(self, req: MemReadReq) -> bytes:
+        return b""
 
 
 @dataclass
@@ -58,9 +115,9 @@ class BufMemReader(MemReader):
     def buf_end_addr(self) -> int:
         return self.buf_addr + len(self.buf)
 
-    def read(self, addr: int, amount: int) -> bytes:
-        offset = addr - self.buf_addr
-        end_offset = min(offset + amount, len(self.buf))
+    def read(self, req: MemReadReq) -> bytes:
+        offset = req.addr - self.buf_addr
+        end_offset = min(offset + req.amount, len(self.buf))
         return self.buf[offset:end_offset]
 
 
@@ -431,6 +488,7 @@ class SleighArch:
 class PartiallyInitializedInsnErr(Exception):
     addr: int
     content: bytes
+    desired_len: int
 
 
 class Sleigh:
@@ -448,13 +506,13 @@ class Sleigh:
         self.all_reg_names = self._fetch_all_reg_names_from_bindings()
 
     def verify_insn_bytes_initialized(self, addr: int, machine_insn_len: int):
-        content = self.mem_reader.read(addr, machine_insn_len)
+        content = self.mem_reader.read(MemReadReq(addr, machine_insn_len))
 
         # sanity
         assert len(content) <= machine_insn_len
 
         if len(content) < machine_insn_len:
-            raise PartiallyInitializedInsnErr(addr, content)
+            raise PartiallyInitializedInsnErr(addr, content, machine_insn_len)
 
     def lift_one(self, addr: int) -> LiftRes:
         bindings_lift_res = self.bindings_sleigh.liftOne(addr)
@@ -530,5 +588,7 @@ class Sleigh:
         WARNING: providing any other varnode will cause undefined behaviour, and may crash the program.
         """
         assert vn.addr.space == VnSpace.const()
-        bindings_addr_space = self.bindings_sleigh.getSpaceFromConstVarnodeOffset(vn.addr.off)
+        bindings_addr_space = self.bindings_sleigh.getSpaceFromConstVarnodeOffset(
+            vn.addr.off
+        )
         return VnSpace.from_bindings(bindings_addr_space)
