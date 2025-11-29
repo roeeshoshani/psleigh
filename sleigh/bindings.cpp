@@ -61,9 +61,9 @@ DEFINE_EXCEPTION_WRAPPER(LowlevelError, "low level");
     WRAP_EXCEPTION(EvaluationError)                                                                                            \
     WRAP_EXCEPTION(LowlevelError)
 
-class SymbolIsNotARegisterError : public std::runtime_error{
+class SymbolIsNotARegisterError : public std::runtime_error {
   public:
-    SymbolIsNotARegisterError(): std::runtime_error("symbol is not a register") {}
+    SymbolIsNotARegisterError() : std::runtime_error("symbol is not a register") {}
 };
 
 class SimpleLoadImage : public LoadImage {
@@ -338,6 +338,14 @@ class BindingsSleigh {
         }
         WRAP_EXCEPTIONS()
     }
+
+    AddrSpace* getSpaceFromConstVarnodeOffset(uint64_t offset) {
+        try {
+            // see `VarnodeData::getSpaceFromConst`
+            return (AddrSpace*)(uintp)offset;
+        }
+        WRAP_EXCEPTIONS()
+    }
 };
 
 void sleighBindingsInitGlobals() {
@@ -419,7 +427,11 @@ PYBIND11_MODULE(psleigh_bindings, m, py::mod_gil_not_used()) {
         .def("regByName", &BindingsSleigh::regByName, py::return_value_policy::reference_internal)
         .def("regNameToIndex", &BindingsSleigh::regNameToIndex)
         .def("allRegNamesAmount", &BindingsSleigh::allRegNamesAmount)
-        .def("allRegNamesGetByIndex", &BindingsSleigh::allRegNamesGetByIndex, py::return_value_policy::reference_internal);
+        .def("allRegNamesGetByIndex", &BindingsSleigh::allRegNamesGetByIndex, py::return_value_policy::reference_internal)
+        .def(
+            "getSpaceFromConstVarnodeOffset", &BindingsSleigh::getSpaceFromConstVarnodeOffset,
+            py::return_value_policy::reference_internal
+        );
 
     py::class_<LiftRes, py::smart_holder>(m, "BindingsLiftRes")
         .def("machineInsnLen", &LiftRes::machineInsnLen)
