@@ -14,6 +14,7 @@ from psleigh import (
     VnAddr,
     VnSpace,
     VnSpaceKind,
+    VnSpaceInfo,
 )
 
 
@@ -177,11 +178,7 @@ def test_space_info_mips():
     assert const_space.kind == VnSpaceKind.CONSTANT
 
     ram_space = sleigh.space_info(VnSpace.ram())
-    assert ram_space.shortcut == "r"
-    assert ram_space.name == "ram"
-    assert ram_space.kind == VnSpaceKind.PROCESSOR
-    assert ram_space.word_size == 1
-    assert ram_space.addr_size == 4
+    assert ram_space == VnSpaceInfo("r", "ram", VnSpaceKind.PROCESSOR, 1, 4)
 
 
 def test_space_info_x86_64():
@@ -198,11 +195,7 @@ def test_space_info_x86_64():
     assert const_space.kind == VnSpaceKind.CONSTANT
 
     ram_space = sleigh.space_info(VnSpace.ram())
-    assert ram_space.shortcut == "r"
-    assert ram_space.name == "ram"
-    assert ram_space.kind == VnSpaceKind.PROCESSOR
-    assert ram_space.word_size == 1
-    assert ram_space.addr_size == 8
+    assert ram_space == VnSpaceInfo("r", "ram", VnSpaceKind.PROCESSOR, 1, 8)
 
 
 def test_reg_by_name_x86_64():
