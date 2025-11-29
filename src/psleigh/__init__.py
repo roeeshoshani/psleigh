@@ -367,10 +367,20 @@ class VnSpaceKind(IntEnum):
 
 @dataclass
 class VnSpaceInfo:
+    """
+    extended information about a varnode address space.
+    """
+
     shortcut: str
     name: str
     kind: VnSpaceKind
+
+    # the size, in bytes, of a single word in this address space.
+    # a word is the smallest addressable unit of memory.
+    # this will usually be 1, indicating that the smallest addressable unit of memory in the address space is a single byte.
     word_size: int
+
+    # specifies the number of bytes needed to address any byte within the space. for example, a 32-bit address space has size 4.
     addr_size: int
 
     def space(self) -> VnSpace:
@@ -509,3 +519,16 @@ class Sleigh:
             self.bindings_sleigh.allRegNamesGetByIndex(i)
             for i in range(all_regs_amount)
         ]
+
+    def decode_space_from_vn(self, vn: Vn) -> VnSpace:
+        """
+        decodes the varnode address space encoded in the given varnode.
+
+        the given vn must be the first input vn of a pcode LOAD or STORE operation, since this is the only case where vns are
+        used to encode address spaces in pcode.
+
+        WARNING: providing any other varnode will cause undefined behaviour, and may crash the program.
+        """
+        assert vn.addr.space == VnSpace.const()
+        bindings_addr_space = self.bindings_sleigh.getSpaceFromConstVarnodeOffset(vn.addr.off)
+        return VnSpace.from_bindings(bindings_addr_space)
