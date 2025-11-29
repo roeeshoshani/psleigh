@@ -1,6 +1,6 @@
 [project]
 name = "psleigh"
-version = "0.3.0"
+version = "0.4.0"
 description = "python bindings for ghidra's sleigh engine"
 readme = "README.md"
 authors = [
