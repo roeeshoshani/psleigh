@@ -509,3 +509,16 @@ class Sleigh:
             self.bindings_sleigh.allRegNamesGetByIndex(i)
             for i in range(all_regs_amount)
         ]
+
+    def decode_space_from_vn(self, vn: Vn) -> VnSpace:
+        """
+        decodes the varnode address space encoded in the given varnode.
+
+        the given vn must be the first input vn of a pcode LOAD or STORE operation, since this is the only case where vns are
+        used to encode address spaces in pcode.
+
+        WARNING: providing any other varnode will cause undefined behaviour, and may crash the program.
+        """
+        assert vn.addr.space == VnSpace.const()
+        bindings_addr_space = self.bindings_sleigh.getSpaceFromConstVarnodeOffset(vn.addr.off)
+        return VnSpace.from_bindings(bindings_addr_space)
