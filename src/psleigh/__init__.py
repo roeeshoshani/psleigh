@@ -87,7 +87,7 @@ class MemReader(ABC, BindingsSimpleLoadImage, metaclass=MemReaderMeta):
         return res
 
 
-@dataclass(frozen=True)
+@dataclass
 class MemReaderDataUnavailErr(Exception):
     """
     an error indicating that the memory reader doesn't have any bytes available at the requested address.
@@ -444,7 +444,7 @@ class VnSpaceInfo:
         return VnSpace(self.shortcut)
 
 
-@dataclass(frozen=True)
+@dataclass
 class NoSuchRegErr(Exception):
     reg_name: str
 
@@ -484,7 +484,7 @@ class SleighArch:
         )
 
 
-@dataclass(frozen=True)
+@dataclass
 class PartiallyInitializedInsnErr(Exception):
     addr: int
     content: bytes
